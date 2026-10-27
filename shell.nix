@@ -1,11 +1,18 @@
 # Development shell for planb: `nix-shell` (or `use nix` with direnv).
 { pkgs ? import <nixpkgs> { } }:
 
+let
+  # Editor tooling built with the same Go as the shell. Linked at .direnv/go-tools so
+  # VS Code can find it at a stable path (see .vscode/settings.json "go.alternateTools").
+  goTools = pkgs.symlinkJoin {
+    name = "planb-go-tools";
+    paths = with pkgs; [ gopls delve impl gotests gomodifytags gotools ];
+  };
+in
 pkgs.mkShell {
   packages = with pkgs; [
     go
-    gopls
-    gotools
+    goTools
     golangci-lint
     kubernetes-controller-tools # controller-gen: deepcopy, CRDs, RBAC
     kubectl
@@ -18,7 +25,8 @@ pkgs.mkShell {
 
   shellHook = ''
     export GOPATH="$HOME/go"
-    export PATH="$PWD/bin:$GOPATH/bin:$PATH"
+    export PATH="$PWD/bin:$PATH:$GOPATH/bin" # nix-provided tools win over ~/go/bin
     export CGO_ENABLED=0
+    mkdir -p .direnv && ln -sfn ${goTools} .direnv/go-tools
   '';
 }

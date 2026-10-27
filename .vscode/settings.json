@@ -1,0 +1,15 @@
+{
+        "nixEnvPicker.envFile": "${workspaceFolder}${/}flake.nix",
+        // Use the Go tools from the nix dev shell instead of stale builds in ~/go/bin.
+        "go.alternateTools": {
+                "gopls": "${workspaceFolder}/.direnv/go-tools/bin/gopls",
+                "dlv": "${workspaceFolder}/.direnv/go-tools/bin/dlv",
+                "impl": "${workspaceFolder}/.direnv/go-tools/bin/impl",
+                "gotests": "${workspaceFolder}/.direnv/go-tools/bin/gotests",
+                "gomodifytags": "${workspaceFolder}/.direnv/go-tools/bin/gomodifytags",
+                "goimports": "${workspaceFolder}/.direnv/go-tools/bin/goimports"
+        },
+        "go.lintTool": "golangci-lint",
+        "go.toolsManagement.autoUpdate": false,
+        "go.toolsManagement.checkForUpdates": "off"
+}
