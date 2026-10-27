@@ -1,0 +1,20 @@
+apiVersion: planb.io/v1alpha1
+kind: Schedule
+metadata:
+  name: app-nightly
+  namespace: db
+spec:
+  schedule: "CRON_TZ=Asia/Tehran 0 3 * * *"
+  keepLast: 7               # plus TTL below, whichever removes first
+  template:
+    storageLocation: default
+    ttl: 720h
+    postgres:
+      host: postgres.db.svc
+      credentials:
+        name: postgres-credentials
+      databases: [app]
+    job:
+      resources:
+        requests: { cpu: 100m, memory: 128Mi }
+        limits: { memory: 512Mi }

@@ -1,0 +1,26 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: postgres-credentials
+  namespace: db
+stringData:
+  username: postgres
+  password: CHANGE_ME
+---
+# One-off backup of two databases (pg_dump custom format) plus roles.
+apiVersion: planb.io/v1alpha1
+kind: Backup
+metadata:
+  name: app-manual-1
+  namespace: db
+spec:
+  storageLocation: default
+  ttl: 168h
+  postgres:
+    host: postgres.db.svc
+    port: 5432
+    sslMode: prefer
+    credentials:
+      name: postgres-credentials
+    databases: [app, keycloak]  # omit to dump the whole server with pg_dumpall
+    includeGlobals: true

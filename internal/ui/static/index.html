@@ -1,0 +1,337 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>planb</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --panel: #fff; --text: #1d2330; --muted: #6b7385; --border: #e2e5ea;
+    --accent: #2f6fde; --ok: #1f9d55; --warn: #c98a04; --bad: #d64545; --chip: #eef1f5;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #12151b; --panel: #1a1e26; --text: #e4e7ec; --muted: #8b93a5; --border: #2a303b;
+      --accent: #6b9cf0; --ok: #3cc47c; --warn: #e0a82e; --bad: #f06a6a; --chip: #242a35;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; background: var(--bg); color: var(--text); }
+  header { display: flex; align-items: center; gap: 16px; padding: 12px 20px; background: var(--panel); border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+  header h1 { font-size: 18px; margin: 0; letter-spacing: -.3px; }
+  header h1 span { color: var(--accent); }
+  nav { display: flex; gap: 4px; flex-wrap: wrap; }
+  nav button { background: none; border: 0; padding: 6px 12px; border-radius: 6px; color: var(--muted); cursor: pointer; font: inherit; }
+  nav button.active { background: var(--chip); color: var(--text); font-weight: 600; }
+  .spacer { flex: 1; }
+  main { padding: 20px; max-width: 1400px; margin: 0 auto; }
+  .toolbar { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; flex-wrap: wrap; }
+  .toolbar h2 { margin: 0; font-size: 16px; flex: 1; }
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  th { font-size: 12px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .4px; }
+  tr:last-child td { border-bottom: 0; }
+  td.msg { white-space: normal; max-width: 420px; color: var(--muted); font-size: 13px; }
+  .empty { padding: 32px; text-align: center; color: var(--muted); }
+  .phase { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 12px; font-weight: 600; background: var(--chip); }
+  .phase.Completed, .phase.Available, .phase.Enabled { color: var(--ok); }
+  .phase.InProgress, .phase.New, .phase.Paused, .phase.Deleting { color: var(--warn); }
+  .phase.Failed, .phase.FailedValidation, .phase.Unavailable { color: var(--bad); }
+  .kind { font-size: 12px; color: var(--muted); }
+  button.btn, select, input, textarea { font: inherit; color: var(--text); }
+  button.btn { background: var(--chip); border: 1px solid var(--border); border-radius: 6px; padding: 5px 10px; cursor: pointer; }
+  button.btn:hover { border-color: var(--accent); }
+  button.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button.btn.danger:hover { border-color: var(--bad); color: var(--bad); }
+  button.btn:disabled { opacity: .5; cursor: not-allowed; }
+  .actions { display: flex; gap: 6px; }
+  select, input, textarea { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 5px 8px; }
+  textarea { width: 100%; font-family: ui-monospace, Menlo, monospace; font-size: 12.5px; }
+  dialog { border: 1px solid var(--border); border-radius: 10px; background: var(--panel); color: var(--text); padding: 0; width: min(720px, calc(100vw - 32px)); }
+  dialog::backdrop { background: rgba(0,0,0,.45); }
+  dialog .head { padding: 14px 18px; border-bottom: 1px solid var(--border); font-weight: 600; display: flex; }
+  dialog .body { padding: 16px 18px; display: grid; gap: 12px; }
+  dialog .foot { padding: 12px 18px; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; gap: 8px; }
+  dialog label { display: grid; gap: 4px; font-size: 13px; color: var(--muted); }
+  dialog label.inline { display: flex; align-items: center; gap: 8px; color: var(--text); }
+  pre.logs { margin: 0; max-height: 60vh; overflow: auto; font-size: 12px; background: var(--bg); padding: 12px; border-radius: 6px; white-space: pre-wrap; word-break: break-all; }
+  #toast { position: fixed; bottom: 20px; right: 20px; padding: 10px 14px; border-radius: 8px; background: var(--text); color: var(--bg); display: none; max-width: 480px; }
+  #toast.err { background: var(--bad); color: #fff; }
+  .ro { font-size: 12px; color: var(--warn); }
+  .hint { font-size: 12px; color: var(--muted); }
+</style>
+</head>
+<body>
+<header>
+  <h1>plan<span>b</span></h1>
+  <nav id="tabs">
+    <button data-tab="backups" class="active">Backups</button>
+    <button data-tab="schedules">Schedules</button>
+    <button data-tab="restores">Restores</button>
+    <button data-tab="locations">Storage locations</button>
+  </nav>
+  <div class="spacer"></div>
+  <span id="ro" class="ro" hidden>read-only</span>
+  <label class="hint">Namespace <select id="ns"><option value="">all</option></select></label>
+</header>
+<main id="view"></main>
+
+<dialog id="dlg"><form method="dialog">
+  <div class="head" id="dlg-title"></div>
+  <div class="body" id="dlg-body"></div>
+  <div class="foot"><button class="btn" value="cancel">Cancel</button><button class="btn primary" id="dlg-ok" value="ok">OK</button></div>
+</form></dialog>
+<div id="toast"></div>
+
+<script>
+const state = { tab: "backups", data: null, cfg: { readOnly: false }, ns: "" };
+const $ = (s) => document.querySelector(s);
+const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+function bytes(n) {
+  if (!n) return "–";
+  const u = ["B", "KiB", "MiB", "GiB", "TiB"]; let i = 0;
+  while (n >= 1024 && i < u.length - 1) { n /= 1024; i++; }
+  return n.toFixed(i ? 1 : 0) + " " + u[i];
+}
+function ago(ts) {
+  if (!ts) return "–";
+  const d = (Date.now() - new Date(ts)) / 1000, a = Math.abs(d);
+  const s = a < 60 ? Math.round(a) + "s" : a < 3600 ? Math.round(a / 60) + "m" : a < 86400 ? Math.round(a / 3600) + "h" : Math.round(a / 86400) + "d";
+  return d >= 0 ? s + " ago" : "in " + s;
+}
+const when = (ts) => ts ? `<span title="${esc(new Date(ts).toLocaleString())}">${ago(ts)}</span>` : "–";
+const phase = (p) => `<span class="phase ${esc(p || "New")}">${esc(p || "New")}</span>`;
+const kind = (spec) => spec?.postgres ? `postgres · ${esc(spec.postgres.host)}${spec.postgres.databases?.length ? " / " + esc(spec.postgres.databases.join(", ")) : " (all)"}`
+  : spec?.bucket ? `bucket · ${esc(spec.bucket.bucket)}${spec.bucket.prefix ? "/" + esc(spec.bucket.prefix) : ""}` : "";
+const btn = (label, action, attrs = "", cls = "") =>
+  `<button type="button" class="btn ${cls}" data-action="${action}" ${attrs} ${state.cfg.readOnly && action !== "logs" ? "disabled" : ""}>${label}</button>`;
+
+function toast(msg, err) {
+  const t = $("#toast"); t.textContent = msg; t.className = err ? "err" : ""; t.style.display = "block";
+  clearTimeout(t._h); t._h = setTimeout(() => (t.style.display = "none"), err ? 7000 : 3000);
+}
+
+async function api(method, path, body) {
+  const r = await fetch(path, { method, headers: body ? { "Content-Type": "application/json" } : {}, body: body ? JSON.stringify(body) : undefined });
+  if (!r.ok) {
+    let msg = r.statusText;
+    try { msg = (await r.json()).error || msg; } catch {}
+    throw new Error(msg);
+  }
+  const ct = r.headers.get("content-type") || "";
+  return r.status === 204 ? null : ct.includes("json") ? r.json() : r.text();
+}
+
+async function load() {
+  try {
+    state.data = await api("GET", "/api/overview?namespace=" + encodeURIComponent(state.ns));
+    updateNamespaces();
+    render();
+  } catch (e) { toast(e.message, true); }
+}
+
+function updateNamespaces() {
+  if (state.cfg.namespace) return;
+  const sel = $("#ns"), d = state.data, set = new Set();
+  [...d.storageLocations, ...d.backups, ...d.schedules, ...d.restores].forEach((o) => set.add(o.metadata.namespace));
+  if (state.ns) set.add(state.ns);
+  const want = ["", ...[...set].sort()];
+  const have = [...sel.options].map((o) => o.value);
+  if (want.join() !== have.join()) {
+    sel.innerHTML = want.map((n) => `<option value="${esc(n)}">${n ? esc(n) : "all"}</option>`).join("");
+    sel.value = state.ns;
+  }
+}
+
+const multiNs = () => !state.ns && !state.cfg.namespace;
+const nsCol = (o) => multiNs() ? `<td>${esc(o.metadata.namespace)}</td>` : "";
+const nsHead = () => multiNs() ? "<th>Namespace</th>" : "";
+const ref = (o) => `data-ns="${esc(o.metadata.namespace)}" data-name="${esc(o.metadata.name)}"`;
+const table = (head, rows, empty) => `<div class="card">${rows.length ? `<table><thead><tr>${head}</tr></thead><tbody>${rows.join("")}</tbody></table>` : `<div class="empty">${empty}</div>`}</div>`;
+
+const views = {
+  backups(d) {
+    const rows = d.backups.map((b) => `<tr>
+      ${nsCol(b)}<td><b>${esc(b.metadata.name)}</b>${b.metadata.labels?.["planb.io/schedule"] ? `<div class="kind">schedule: ${esc(b.metadata.labels["planb.io/schedule"])}</div>` : ""}</td>
+      <td class="kind">${kind(b.spec)}</td><td>${phase(b.status?.phase)}</td><td>${esc(b.spec.storageLocation)}</td>
+      <td>${bytes(b.status?.sizeBytes)}</td><td>${b.status?.items ?? "–"}</td>
+      <td>${when(b.status?.completionTimestamp || b.status?.startTimestamp || b.metadata.creationTimestamp)}</td>
+      <td>${when(b.status?.expiration)}</td><td class="msg">${esc(b.status?.message)}</td>
+      <td><div class="actions">
+        ${btn("Restore", "restore", ref(b) + (b.status?.phase !== "Completed" ? " disabled" : ""))}
+        ${b.status?.jobName ? btn("Logs", "logs", `data-ns="${esc(b.metadata.namespace)}" data-job="${esc(b.status.jobName)}"`) : ""}
+        ${btn("Delete", "delete-backup", ref(b), "danger")}
+      </div></td></tr>`);
+    return `<div class="toolbar"><h2>Backups</h2>${btn("New backup", "new-backup", "", "primary")}</div>` +
+      table(`${nsHead()}<th>Name</th><th>Source</th><th>Phase</th><th>Location</th><th>Size</th><th>Items</th><th>Time</th><th>Expires</th><th>Message</th><th></th>`, rows, "No backups yet.");
+  },
+  schedules(d) {
+    const rows = d.schedules.map((s) => `<tr>
+      ${nsCol(s)}<td><b>${esc(s.metadata.name)}</b></td><td><code>${esc(s.spec.schedule)}</code></td>
+      <td class="kind">${kind(s.spec.template)}</td><td>${phase(s.status?.phase)}</td>
+      <td>${esc(s.status?.lastBackup || "–")}</td><td>${when(s.status?.lastScheduleTime)}</td><td>${when(s.status?.nextScheduleTime)}</td>
+      <td>${s.spec.keepLast || "–"} / ${esc(s.spec.template.ttl || "default")}</td><td class="msg">${esc(s.status?.message)}</td>
+      <td><div class="actions">
+        ${btn("Run now", "run-schedule", ref(s))}
+        ${s.spec.paused ? btn("Resume", "resume", ref(s)) : btn("Pause", "pause", ref(s))}
+      </div></td></tr>`);
+    return `<div class="toolbar"><h2>Schedules</h2></div>` +
+      table(`${nsHead()}<th>Name</th><th>Cron</th><th>Source</th><th>Phase</th><th>Last backup</th><th>Last run</th><th>Next run</th><th>Keep / TTL</th><th>Message</th><th></th>`, rows, "No schedules. Create one with kubectl (see config/samples).");
+  },
+  restores(d) {
+    const rows = d.restores.map((r) => `<tr>
+      ${nsCol(r)}<td><b>${esc(r.metadata.name)}</b></td><td>${esc(r.spec.backupName)}</td><td>${phase(r.status?.phase)}</td>
+      <td>${bytes(r.status?.sizeBytes)}</td><td>${r.status?.items ?? "–"}</td>
+      <td>${when(r.status?.startTimestamp || r.metadata.creationTimestamp)}</td><td>${when(r.status?.completionTimestamp)}</td>
+      <td class="msg">${esc(r.status?.message)}</td>
+      <td><div class="actions">
+        ${r.status?.jobName ? btn("Logs", "logs", `data-ns="${esc(r.metadata.namespace)}" data-job="${esc(r.status.jobName)}"`) : ""}
+        ${btn("Delete", "delete-restore", ref(r), "danger")}
+      </div></td></tr>`);
+    return `<div class="toolbar"><h2>Restores</h2></div>` +
+      table(`${nsHead()}<th>Name</th><th>Backup</th><th>Phase</th><th>Size</th><th>Items</th><th>Started</th><th>Completed</th><th>Message</th><th></th>`, rows, "No restores. Use “Restore” on a completed backup.");
+  },
+  locations(d) {
+    const rows = d.storageLocations.map((l) => `<tr>
+      ${nsCol(l)}<td><b>${esc(l.metadata.name)}</b></td><td>${phase(l.status?.phase)}</td>
+      <td>${esc(l.spec.s3.insecure ? "http://" : "https://")}${esc(l.spec.s3.endpoint)}</td>
+      <td>${esc(l.spec.s3.bucket)}${l.spec.s3.prefix ? "/" + esc(l.spec.s3.prefix) : ""}</td><td>${esc(l.spec.accessMode || "ReadWrite")}</td>
+      <td>${when(l.status?.lastValidationTime)}</td><td>${when(l.status?.lastSyncTime)}</td><td class="msg">${esc(l.status?.message)}</td></tr>`);
+    return `<div class="toolbar"><h2>Storage locations</h2></div>` +
+      table(`${nsHead()}<th>Name</th><th>Phase</th><th>Endpoint</th><th>Bucket</th><th>Access</th><th>Validated</th><th>Synced</th><th>Message</th>`, rows, "No storage locations configured.");
+  },
+};
+
+function render() {
+  if (!state.data) return;
+  if (document.querySelector("dialog[open]")) return; // don't disturb an open form
+  $("#view").innerHTML = views[state.tab](state.data);
+}
+
+function dialog(title, bodyHTML, okLabel = "OK") {
+  return new Promise((resolve) => {
+    const d = $("#dlg");
+    $("#dlg-title").textContent = title;
+    $("#dlg-body").innerHTML = bodyHTML;
+    $("#dlg-ok").textContent = okLabel;
+    $("#dlg-ok").hidden = !okLabel;
+    d.onclose = () => { resolve(d.returnValue === "ok" ? d : null); render(); };
+    d.returnValue = "";
+    d.showModal();
+  });
+}
+
+const find = (list, el) => state.data[list].find((o) => o.metadata.namespace === el.dataset.ns && o.metadata.name === el.dataset.name);
+const lines = (v) => v.split(/[\s,]+/).map((s) => s.trim()).filter(Boolean);
+
+async function restoreDialog(b) {
+  const pg = !!b.spec.postgres;
+  const body = pg ? `
+    <div class="hint">Restores into <b>${esc(b.spec.postgres.host)}</b> by default. Fill in a target to restore elsewhere.</div>
+    <label>Databases to restore (empty = all in backup)<input name="dbs" placeholder="${esc((b.spec.postgres.databases || []).join(", "))}"></label>
+    <label>Rename databases (source=target, one per line)<textarea name="map" rows="2" placeholder="app=app_restored"></textarea></label>
+    <label>Target host (optional)<input name="host" placeholder="${esc(b.spec.postgres.host)}"></label>
+    <label>Target credentials secret (required with a target host)<input name="secret" placeholder="${esc(b.spec.postgres.credentials.name)}"></label>
+    <label class="inline"><input type="checkbox" name="clean"> Clean: drop existing objects before restoring</label>
+    <label class="inline"><input type="checkbox" name="globals"> Restore roles/tablespaces (if in backup)</label>`
+  : `
+    <div class="hint">Restores into <b>${esc(b.spec.bucket.bucket)}${b.spec.bucket.prefix ? "/" + esc(b.spec.bucket.prefix) : ""}</b> by default.</div>
+    <label>Target bucket (optional)<input name="bucket" placeholder="${esc(b.spec.bucket.bucket)}"></label>
+    <label>Target prefix (optional)<input name="prefix" placeholder="${esc(b.spec.bucket.prefix || "")}"></label>
+    <label class="inline"><input type="checkbox" name="overwrite" checked> Overwrite existing objects</label>`;
+  const d = await dialog(`Restore ${b.metadata.name}`, body + `<label>Restore name (optional)<input name="name"></label>`, "Restore");
+  if (!d) return;
+  const f = d.querySelector("form").elements, spec = { backupName: b.metadata.name };
+  if (pg) {
+    spec.postgres = { clean: f.clean.checked, restoreGlobals: f.globals.checked };
+    if (f.dbs.value.trim()) spec.postgres.databases = lines(f.dbs.value);
+    const map = {};
+    f.map.value.split("\n").forEach((l) => { const [k, v] = l.split("=").map((s) => s?.trim()); if (k && v) map[k] = v; });
+    if (Object.keys(map).length) spec.postgres.databaseMapping = map;
+    if (f.host.value.trim()) {
+      spec.postgres.target = { ...b.spec.postgres, host: f.host.value.trim(),
+        credentials: { ...b.spec.postgres.credentials, name: f.secret.value.trim() || b.spec.postgres.credentials.name } };
+      delete spec.postgres.target.databases; delete spec.postgres.target.includeGlobals; delete spec.postgres.target.extraArgs;
+    }
+  } else {
+    spec.bucket = { overwrite: f.overwrite.checked };
+    if (f.bucket.value.trim() || f.prefix.value.trim()) {
+      spec.bucket.target = { ...b.spec.bucket, bucket: f.bucket.value.trim() || b.spec.bucket.bucket, prefix: f.prefix.value.trim() || b.spec.bucket.prefix };
+    }
+  }
+  const r = await api("POST", "/api/restores", { namespace: b.metadata.namespace, name: f.name.value.trim(), spec });
+  toast(`Restore ${r.metadata.name} created`);
+  state.tab = "restores"; setTab();
+}
+
+async function newBackupDialog() {
+  const loc = state.data.storageLocations[0];
+  const ns = state.ns || loc?.metadata.namespace || state.cfg.namespace || "";
+  const example = { storageLocation: loc?.metadata.name || "default", ttl: "720h",
+    postgres: { host: "postgres.db.svc", port: 5432, databases: ["app"], credentials: { name: "postgres-credentials" } } };
+  const d = await dialog("New backup", `
+    <label>Namespace<input name="ns" value="${esc(ns)}" required></label>
+    <label>Name (optional)<input name="name"></label>
+    <label>Spec (JSON, see Backup CRD)<textarea name="spec" rows="12">${esc(JSON.stringify(example, null, 2))}</textarea></label>`, "Create");
+  if (!d) return;
+  const f = d.querySelector("form").elements;
+  let spec;
+  try { spec = JSON.parse(f.spec.value); } catch (e) { return toast("Invalid JSON: " + e.message, true); }
+  const b = await api("POST", "/api/backups", { namespace: f.ns.value.trim(), name: f.name.value.trim(), spec });
+  toast(`Backup ${b.metadata.name} created`);
+}
+
+document.addEventListener("click", async (e) => {
+  const el = e.target.closest("[data-action]");
+  if (!el || el.disabled) return;
+  const { ns, name } = el.dataset;
+  try {
+    switch (el.dataset.action) {
+      case "restore": await restoreDialog(find("backups", el)); break;
+      case "new-backup": await newBackupDialog(); break;
+      case "delete-backup":
+        if (!confirm(`Delete backup ${name}? Its data in object storage will be deleted too.`)) return;
+        await api("DELETE", `/api/backups/${ns}/${name}`); toast(`Backup ${name} deleted`); break;
+      case "delete-restore":
+        if (!confirm(`Delete restore record ${name}? (Restored data is not touched.)`)) return;
+        await api("DELETE", `/api/restores/${ns}/${name}`); toast(`Restore ${name} deleted`); break;
+      case "run-schedule": {
+        const b = await api("POST", "/api/backups", { namespace: ns, schedule: name });
+        toast(`Backup ${b.metadata.name} created`); break;
+      }
+      case "pause": case "resume":
+        await api("POST", `/api/schedules/${ns}/${name}/${el.dataset.action}`); toast(`Schedule ${name} ${el.dataset.action}d`); break;
+      case "logs": {
+        const text = await api("GET", `/api/logs/${ns}/${el.dataset.job}`);
+        await dialog(`Logs · ${el.dataset.job}`, `<pre class="logs">${esc(text)}</pre>`, "");
+        return;
+      }
+    }
+    load();
+  } catch (err) { toast(err.message, true); }
+});
+
+function setTab() {
+  document.querySelectorAll("#tabs button").forEach((b) => b.classList.toggle("active", b.dataset.tab === state.tab));
+  try { localStorage.setItem("planb.tab", state.tab); } catch {}
+  render();
+  load();
+}
+$("#tabs").addEventListener("click", (e) => { if (e.target.dataset.tab) { state.tab = e.target.dataset.tab; setTab(); } });
+$("#ns").addEventListener("change", (e) => { state.ns = e.target.value; load(); });
+
+(async () => {
+  try { state.tab = localStorage.getItem("planb.tab") || state.tab; } catch {}
+  try {
+    state.cfg = await api("GET", "/api/config");
+    $("#ro").hidden = !state.cfg.readOnly;
+    if (state.cfg.namespace) { state.ns = state.cfg.namespace; $("#ns").innerHTML = `<option>${esc(state.ns)}</option>`; $("#ns").disabled = true; }
+  } catch (e) { toast(e.message, true); }
+  setTab();
+  setInterval(load, 5000);
+})();
+</script>
+</body>
+</html>

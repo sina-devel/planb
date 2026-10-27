@@ -1,0 +1,141 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.23.0
+  name: backupstoragelocations.planb.io
+spec:
+  group: planb.io
+  names:
+    kind: BackupStorageLocation
+    listKind: BackupStorageLocationList
+    plural: backupstoragelocations
+    shortNames:
+    - bsl
+    singular: backupstoragelocation
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .status.phase
+      name: Phase
+      type: string
+    - jsonPath: .spec.s3.endpoint
+      name: Endpoint
+      type: string
+    - jsonPath: .spec.s3.bucket
+      name: Bucket
+      type: string
+    - jsonPath: .spec.accessMode
+      name: Access
+      type: string
+    - jsonPath: .status.lastValidationTime
+      name: Last Validated
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: BackupStorageLocation is an S3-compatible bucket where backups
+          are stored.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: BackupStorageLocationSpec defines where backups are stored.
+            properties:
+              accessMode:
+                default: ReadWrite
+                description: AccessMode of a BackupStorageLocation.
+                enum:
+                - ReadWrite
+                - ReadOnly
+                type: string
+              s3:
+                description: S3 bucket that stores backups.
+                properties:
+                  bucket:
+                    description: Bucket name.
+                    minLength: 1
+                    type: string
+                  credentials:
+                    description: Credentials secret. When omitted, anonymous / IAM-provided
+                      credentials are used.
+                    properties:
+                      accessKeyIdKey:
+                        default: accessKey
+                        description: Key holding the access key ID.
+                        type: string
+                      name:
+                        description: Name of the Secret.
+                        type: string
+                      secretAccessKeyKey:
+                        default: secretKey
+                        description: Key holding the secret access key.
+                        type: string
+                    required:
+                    - name
+                    type: object
+                  endpoint:
+                    description: Endpoint host[:port], without scheme. e.g. s3.amazonaws.com
+                      or minio.minio.svc:9000
+                    minLength: 1
+                    type: string
+                  insecure:
+                    description: Insecure uses plain HTTP instead of HTTPS.
+                    type: boolean
+                  prefix:
+                    description: Prefix inside the bucket.
+                    type: string
+                  region:
+                    description: Region of the bucket.
+                    type: string
+                  skipTLSVerify:
+                    description: SkipTLSVerify disables TLS certificate verification.
+                    type: boolean
+                required:
+                - bucket
+                - endpoint
+                type: object
+              syncPeriod:
+                default: 1m
+                description: SyncPeriod is how often backups found in storage are
+                  synced into the cluster. 0 disables sync.
+                type: string
+            required:
+            - s3
+            type: object
+          status:
+            description: BackupStorageLocationStatus defines the observed state of
+              BackupStorageLocation.
+            properties:
+              lastSyncTime:
+                format: date-time
+                type: string
+              lastValidationTime:
+                format: date-time
+                type: string
+              message:
+                type: string
+              phase:
+                type: string
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

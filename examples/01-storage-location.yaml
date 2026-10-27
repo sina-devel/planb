@@ -1,0 +1,25 @@
+# S3-compatible bucket where backups are stored (MinIO in this example).
+apiVersion: v1
+kind: Secret
+metadata:
+  name: backup-storage
+  namespace: db
+stringData:
+  accessKey: CHANGE_ME
+  secretKey: CHANGE_ME
+---
+apiVersion: planb.io/v1alpha1
+kind: BackupStorageLocation
+metadata:
+  name: default
+  namespace: db
+spec:
+  s3:
+    endpoint: minio.minio.svc:9000
+    bucket: backups
+    prefix: planb
+    insecure: true          # plain HTTP (in-cluster MinIO)
+    credentials:
+      name: backup-storage  # keys: accessKey / secretKey
+  accessMode: ReadWrite     # ReadOnly = restore-only (e.g. a DR cluster)
+  syncPeriod: 1m            # import backups found in storage; 0s disables

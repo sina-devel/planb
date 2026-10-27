@@ -1,0 +1,33 @@
+# Restore "app" from a backup into a new database on the same server.
+apiVersion: planb.io/v1alpha1
+kind: Restore
+metadata:
+  name: app-restore-test
+  namespace: db
+spec:
+  backupName: app-manual-1
+  postgres:
+    databases: [app]
+    databaseMapping:
+      app: app_restored
+    createDatabase: true
+    clean: false
+    # target:               # restore into a different server
+    #   host: postgres-staging.db.svc
+    #   credentials: { name: staging-credentials }
+---
+# Restore a bucket backup into a different bucket/prefix, skipping existing keys.
+apiVersion: planb.io/v1alpha1
+kind: Restore
+metadata:
+  name: media-restore
+  namespace: db
+spec:
+  backupName: media-manual-1
+  bucket:
+    overwrite: false
+    target:
+      endpoint: s3.eu-central-1.amazonaws.com
+      region: eu-central-1
+      bucket: media-restored
+      credentials: { name: uploads-bucket }

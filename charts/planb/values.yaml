@@ -1,0 +1,63 @@
+image:
+  repository: ghcr.io/sina-devel/planb
+  # Defaults to the chart appVersion.
+  tag: ""
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+
+manager:
+  replicas: 1
+  # Only watch this namespace (empty = all namespaces).
+  watchNamespace: ""
+  # TTL for Backups that do not set spec.ttl ("0s" keeps them forever).
+  defaultBackupTTL: 720h
+  # Finished backup/restore Jobs (and their logs) are kept this long.
+  jobTTLSeconds: 86400
+  # Image for backup/restore Jobs (default: same as the manager image).
+  agentImage: ""
+  logLevel: info
+  resources:
+    requests: { cpu: 50m, memory: 64Mi }
+    limits: { memory: 256Mi }
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+ui:
+  enabled: false
+  replicas: 1
+  # Restrict the UI to one namespace (empty = all namespaces).
+  namespace: ""
+  # Disable create/delete/pause actions.
+  readOnly: false
+  # Basic auth. Either set username/password, or point existingSecret at a Secret
+  # with keys "username" and "password". Strongly recommended when exposed via ingress.
+  auth:
+    username: ""
+    password: ""
+    existingSecret: ""
+  service:
+    type: ClusterIP
+    port: 80
+  ingress:
+    enabled: false
+    className: ""
+    annotations: {}
+    host: planb.example.com
+    tls: []
+  resources:
+    requests: { cpu: 10m, memory: 32Mi }
+    limits: { memory: 128Mi }
+  nodeSelector: {}
+  tolerations: []
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  seccompProfile: { type: RuntimeDefault }
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities: { drop: [ALL] }

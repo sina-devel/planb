@@ -1,0 +1,24 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: uploads-bucket
+  namespace: db
+stringData:
+  accessKey: CHANGE_ME
+  secretKey: CHANGE_ME
+---
+# Copies every object under uploads/ of the "media" bucket into the storage location.
+apiVersion: planb.io/v1alpha1
+kind: Backup
+metadata:
+  name: media-manual-1
+  namespace: db
+spec:
+  storageLocation: default
+  bucket:
+    endpoint: s3.eu-central-1.amazonaws.com
+    region: eu-central-1
+    bucket: media
+    prefix: uploads/
+    credentials:
+      name: uploads-bucket

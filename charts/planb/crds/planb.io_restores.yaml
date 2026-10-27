@@ -1,0 +1,343 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.23.0
+  name: restores.planb.io
+spec:
+  group: planb.io
+  names:
+    kind: Restore
+    listKind: RestoreList
+    plural: restores
+    singular: restore
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .spec.backupName
+      name: Backup
+      type: string
+    - jsonPath: .status.phase
+      name: Phase
+      type: string
+    - jsonPath: .status.completionTimestamp
+      name: Completed
+      type: date
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: Restore restores a Backup into a PostgreSQL server or a bucket.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: RestoreSpec defines the desired state of Restore.
+            properties:
+              backupName:
+                description: BackupName is the Backup (in the same namespace) to restore
+                  from.
+                minLength: 1
+                type: string
+              bucket:
+                description: BucketRestoreOptions control a bucket restore.
+                properties:
+                  overwrite:
+                    default: true
+                    description: Overwrite existing objects in the target. When false,
+                      existing keys are skipped.
+                    type: boolean
+                  target:
+                    description: Target bucket. Defaults to the bucket (and prefix)
+                      the backup was taken from.
+                    properties:
+                      bucket:
+                        description: Bucket name.
+                        minLength: 1
+                        type: string
+                      credentials:
+                        description: Credentials secret. When omitted, anonymous /
+                          IAM-provided credentials are used.
+                        properties:
+                          accessKeyIdKey:
+                            default: accessKey
+                            description: Key holding the access key ID.
+                            type: string
+                          name:
+                            description: Name of the Secret.
+                            type: string
+                          secretAccessKeyKey:
+                            default: secretKey
+                            description: Key holding the secret access key.
+                            type: string
+                        required:
+                        - name
+                        type: object
+                      endpoint:
+                        description: Endpoint host[:port], without scheme. e.g. s3.amazonaws.com
+                          or minio.minio.svc:9000
+                        minLength: 1
+                        type: string
+                      insecure:
+                        description: Insecure uses plain HTTP instead of HTTPS.
+                        type: boolean
+                      prefix:
+                        description: Prefix inside the bucket.
+                        type: string
+                      region:
+                        description: Region of the bucket.
+                        type: string
+                      skipTLSVerify:
+                        description: SkipTLSVerify disables TLS certificate verification.
+                        type: boolean
+                    required:
+                    - bucket
+                    - endpoint
+                    type: object
+                type: object
+              job:
+                description: JobOptions customise the Job that performs a backup or
+                  restore.
+                properties:
+                  activeDeadlineSeconds:
+                    format: int64
+                    type: integer
+                  backoffLimit:
+                    default: 1
+                    format: int32
+                    type: integer
+                  image:
+                    description: Image overrides the agent image (it must contain
+                      the planb binary and PostgreSQL client tools).
+                    type: string
+                  nodeSelector:
+                    additionalProperties:
+                      type: string
+                    type: object
+                  resources:
+                    description: ResourceRequirements describes the compute resource
+                      requirements.
+                    properties:
+                      claims:
+                        description: |-
+                          Claims lists the names of resources, defined in spec.resourceClaims,
+                          that are used by this container.
+
+                          This field depends on the
+                          DynamicResourceAllocation feature gate.
+
+                          This field is immutable. It can only be set for containers.
+                        items:
+                          description: ResourceClaim references one entry in PodSpec.ResourceClaims.
+                          properties:
+                            name:
+                              description: |-
+                                Name must match the name of one entry in pod.spec.resourceClaims of
+                                the Pod where this field is used. It makes that resource available
+                                inside a container.
+                              type: string
+                            request:
+                              description: |-
+                                Request is the name chosen for a request in the referenced claim.
+                                If empty, everything from the claim is made available, otherwise
+                                only the result of this request.
+                              type: string
+                          required:
+                          - name
+                          type: object
+                        type: array
+                        x-kubernetes-list-map-keys:
+                        - name
+                        x-kubernetes-list-type: map
+                      limits:
+                        additionalProperties:
+                          anyOf:
+                          - type: integer
+                          - type: string
+                          pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                          x-kubernetes-int-or-string: true
+                        description: |-
+                          Limits describes the maximum amount of compute resources allowed.
+                          More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+                        type: object
+                      requests:
+                        additionalProperties:
+                          anyOf:
+                          - type: integer
+                          - type: string
+                          pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                          x-kubernetes-int-or-string: true
+                        description: |-
+                          Requests describes the minimum amount of compute resources required.
+                          If Requests is omitted for a container, it defaults to Limits if that is explicitly specified,
+                          otherwise to an implementation-defined value. Requests cannot exceed Limits.
+                          More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+                        type: object
+                    type: object
+                  serviceAccountName:
+                    type: string
+                  tolerations:
+                    items:
+                      description: |-
+                        The pod this Toleration is attached to tolerates any taint that matches
+                        the triple <key,value,effect> using the matching operator <operator>.
+                      properties:
+                        effect:
+                          description: |-
+                            Effect indicates the taint effect to match. Empty means match all taint effects.
+                            When specified, allowed values are NoSchedule, PreferNoSchedule and NoExecute.
+                          type: string
+                        key:
+                          description: |-
+                            Key is the taint key that the toleration applies to. Empty means match all taint keys.
+                            If the key is empty, operator must be Exists; this combination means to match all values and all keys.
+                          type: string
+                        operator:
+                          description: |-
+                            Operator represents a key's relationship to the value.
+                            Valid operators are Exists, Equal, Lt, and Gt. Defaults to Equal.
+                            Exists is equivalent to wildcard for value, so that a pod can
+                            tolerate all taints of a particular category.
+                            Lt and Gt perform numeric comparisons (requires feature gate TaintTolerationComparisonOperators).
+                          type: string
+                        tolerationSeconds:
+                          description: |-
+                            TolerationSeconds represents the period of time the toleration (which must be
+                            of effect NoExecute, otherwise this field is ignored) tolerates the taint. By default,
+                            it is not set, which means tolerate the taint forever (do not evict). Zero and
+                            negative values will be treated as 0 (evict immediately) by the system.
+                          format: int64
+                          type: integer
+                        value:
+                          description: |-
+                            Value is the taint value the toleration matches to.
+                            If the operator is Exists, the value should be empty, otherwise just a regular string.
+                          type: string
+                      type: object
+                    type: array
+                type: object
+              postgres:
+                description: PostgresRestoreOptions control a PostgreSQL restore.
+                properties:
+                  clean:
+                    description: Clean drops existing objects before recreating them
+                      (pg_restore --clean --if-exists).
+                    type: boolean
+                  createDatabase:
+                    default: true
+                    description: CreateDatabase creates the target database if it
+                      does not exist.
+                    type: boolean
+                  databaseMapping:
+                    additionalProperties:
+                      type: string
+                    description: 'DatabaseMapping restores a database under a different
+                      name: {source: target}.'
+                    type: object
+                  databases:
+                    description: 'Databases to restore (default: all databases in
+                      the backup).'
+                    items:
+                      type: string
+                    type: array
+                  extraArgs:
+                    description: ExtraArgs appended to pg_restore / psql.
+                    items:
+                      type: string
+                    type: array
+                  restoreGlobals:
+                    description: RestoreGlobals also replays roles/tablespaces when
+                      the backup contains them.
+                    type: boolean
+                  target:
+                    description: Target server. Defaults to the server the backup
+                      was taken from.
+                    properties:
+                      credentials:
+                        description: Credentials secret.
+                        properties:
+                          name:
+                            description: Name of the Secret.
+                            type: string
+                          passwordKey:
+                            default: password
+                            type: string
+                          usernameKey:
+                            default: username
+                            type: string
+                        required:
+                        - name
+                        type: object
+                      host:
+                        description: Host of the PostgreSQL server.
+                        minLength: 1
+                        type: string
+                      port:
+                        default: 5432
+                        format: int32
+                        type: integer
+                      sslMode:
+                        default: prefer
+                        description: SSLMode passed to libpq (disable, allow, prefer,
+                          require, verify-ca, verify-full).
+                        enum:
+                        - disable
+                        - allow
+                        - prefer
+                        - require
+                        - verify-ca
+                        - verify-full
+                        type: string
+                    required:
+                    - credentials
+                    - host
+                    type: object
+                type: object
+            required:
+            - backupName
+            type: object
+          status:
+            description: RestoreStatus defines the observed state of Restore.
+            properties:
+              completionTimestamp:
+                format: date-time
+                type: string
+              items:
+                format: int64
+                type: integer
+              jobName:
+                type: string
+              message:
+                type: string
+              phase:
+                type: string
+              sizeBytes:
+                format: int64
+                type: integer
+              startTimestamp:
+                format: date-time
+                type: string
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
