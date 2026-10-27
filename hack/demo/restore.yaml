@@ -1,0 +1,25 @@
+# Restores next to the originals so both can be compared.
+apiVersion: planb.io/v1alpha1
+kind: Restore
+metadata:
+  name: app-1-restore
+  namespace: planb-demo
+spec:
+  backupName: app-1
+  postgres:
+    databaseMapping: { app: app_restored }
+---
+apiVersion: planb.io/v1alpha1
+kind: Restore
+metadata:
+  name: media-1-restore
+  namespace: planb-demo
+spec:
+  backupName: media-1
+  bucket:
+    target:
+      endpoint: s3.planb-demo.svc:9000
+      bucket: media
+      prefix: restored/
+      insecure: true
+      credentials: { name: s3-credentials }

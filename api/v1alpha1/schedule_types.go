@@ -52,7 +52,7 @@ type ScheduleStatus struct {
 // +kubebuilder:printcolumn:name="Phase",type=string,JSONPath=`.status.phase`
 // +kubebuilder:printcolumn:name="Schedule",type=string,JSONPath=`.spec.schedule`
 // +kubebuilder:printcolumn:name="Last Backup",type=string,JSONPath=`.status.lastBackup`
-// +kubebuilder:printcolumn:name="Next",type=date,JSONPath=`.status.nextScheduleTime`
+// +kubebuilder:printcolumn:name="Next",type=string,JSONPath=`.status.nextScheduleTime`
 
 // Schedule creates Backups periodically.
 type Schedule struct {

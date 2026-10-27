@@ -1,0 +1,27 @@
+apiVersion: planb.io/v1alpha1
+kind: Backup
+metadata:
+  name: app-1
+  namespace: planb-demo
+spec:
+  storageLocation: default
+  postgres:
+    host: postgres.planb-demo.svc
+    sslMode: disable
+    credentials: { name: postgres-credentials }
+    databases: [app]
+    includeGlobals: true
+---
+apiVersion: planb.io/v1alpha1
+kind: Backup
+metadata:
+  name: media-1
+  namespace: planb-demo
+spec:
+  storageLocation: default
+  bucket:
+    endpoint: s3.planb-demo.svc:9000
+    bucket: media
+    prefix: uploads/
+    insecure: true
+    credentials: { name: s3-credentials }

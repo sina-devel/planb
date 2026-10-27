@@ -13,15 +13,19 @@ metadata:
   labels: {{- include "planb.labels" . | nindent 4 }}
 rules:
   - apiGroups: [planb.io]
-    resources: [backups, restores, schedules, backupstoragelocations]
+    resources: [backups, restores, schedules, backupstoragelocations, notifiers]
     verbs: [get, list, watch]
   {{- if not .Values.ui.readOnly }}
   - apiGroups: [planb.io]
-    resources: [backups, restores]
+    resources: [backups, restores, schedules, backupstoragelocations, notifiers]
     verbs: [create, delete]
   - apiGroups: [planb.io]
-    resources: [schedules]
+    resources: [schedules, notifiers]
     verbs: [patch]
+  # Credentials entered in the UI forms. Create only: the UI can never read existing Secrets.
+  - apiGroups: [""]
+    resources: [secrets]
+    verbs: [create]
   {{- end }}
   - apiGroups: [batch]
     resources: [jobs]

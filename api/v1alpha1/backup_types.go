@@ -88,7 +88,7 @@ type BackupStatus struct {
 // +kubebuilder:printcolumn:name="Location",type=string,JSONPath=`.spec.storageLocation`
 // +kubebuilder:printcolumn:name="Size",type=integer,JSONPath=`.status.sizeBytes`
 // +kubebuilder:printcolumn:name="Completed",type=date,JSONPath=`.status.completionTimestamp`
-// +kubebuilder:printcolumn:name="Expires",type=date,JSONPath=`.status.expiration`
+// +kubebuilder:printcolumn:name="Expires",type=string,JSONPath=`.status.expiration`
 
 // Backup is a one-off backup of a PostgreSQL server or a bucket.
 type Backup struct {

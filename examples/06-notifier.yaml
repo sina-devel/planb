@@ -1,0 +1,78 @@
+# Notifiers send a message when Backups or Restores in their namespace finish.
+# Each Notifier has exactly one channel. Events default to [BackupFailed, RestoreFailed].
+apiVersion: v1
+kind: Secret
+metadata:
+  name: telegram-bot
+  namespace: db
+stringData:
+  token: "123456789:CHANGE_ME"
+---
+apiVersion: planb.io/v1alpha1
+kind: Notifier
+metadata:
+  name: telegram-ops
+  namespace: db
+spec:
+  events: [BackupFailed, RestoreFailed]
+  telegram:
+    chatID: "-1001234567890"          # user, group or @channel; the bot must be a member
+    botToken: { name: telegram-bot, key: token }
+    # apiURL: https://tg-proxy.example.com   # self-hosted Bot API server or reverse proxy
+---
+# Slack incoming webhook (Mattermost and Rocket.Chat accept the same format).
+apiVersion: v1
+kind: Secret
+metadata:
+  name: slack-webhook
+  namespace: db
+stringData:
+  url: https://hooks.slack.com/services/CHANGE/ME
+---
+apiVersion: planb.io/v1alpha1
+kind: Notifier
+metadata:
+  name: slack-nightly
+  namespace: db
+spec:
+  events: [BackupCompleted, BackupFailed]
+  selector:
+    matchLabels: { planb.io/schedule: app-nightly }   # only backups of this schedule
+  slack:
+    webhookURL: { name: slack-webhook, key: url }
+    channel: "#backups"
+---
+# Generic webhook: receives the event as JSON (event, kind, namespace, name, phase, message, source, sizeBytes, ...).
+apiVersion: planb.io/v1alpha1
+kind: Notifier
+metadata:
+  name: alerting
+  namespace: db
+spec:
+  events: [BackupFailed, RestoreFailed]
+  webhook:
+    url: http://alert-receiver.monitoring.svc/planb
+    headers: { X-Source: planb }
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: smtp
+  namespace: db
+stringData:
+  username: planb@example.com
+  password: CHANGE_ME
+---
+apiVersion: planb.io/v1alpha1
+kind: Notifier
+metadata:
+  name: email-dba
+  namespace: db
+spec:
+  email:
+    host: smtp.example.com
+    port: 587
+    tls: StartTLS                      # StartTLS (587), TLS (465) or None
+    from: planb@example.com
+    to: [dba@example.com]
+    credentials: { name: smtp }        # keys: username / password

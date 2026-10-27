@@ -16,6 +16,7 @@ Backups go to any S3-compatible object store (AWS S3, MinIO, Ceph RGW, ...). The
 | `Backup` | Backup | One-off backup of a PostgreSQL server *or* a bucket |
 | `Schedule` | Schedule | Cron that creates `Backup`s from a template; supports `keepLast` |
 | `Restore` | Restore | Restores a `Backup` to its original source or a different target |
+| `Notifier` | — | Sends Telegram, Slack, webhook or email messages when backups/restores finish |
 
 All resources are namespaced. A Backup refers to a storage location, and all credential Secrets live in the
 same namespace.
@@ -113,6 +114,31 @@ A bucket backup copies objects under `spec.bucket.prefix` into `<backup>/bucket/
 copies them back to the original bucket and prefix, or to `spec.bucket.target`. With `overwrite: false`, existing
 keys are skipped.
 
+### Notifications
+
+A `Notifier` sends a message when Backups or Restores in its namespace finish. See
+[`examples/06-notifier.yaml`](examples/06-notifier.yaml).
+
+| Channel | Spec | Notes |
+|---|---|---|
+| Telegram | `telegram: {chatID, botToken}` | `apiURL` for a self-hosted Bot API server or proxy |
+| Slack | `slack: {webhookURL, channel}` | Mattermost and Rocket.Chat accept the same webhook |
+| Webhook | `webhook: {url \| urlSecret, headers}` | JSON body: event, kind, namespace, name, phase, message, source, size, times |
+| Email | `email: {host, port, tls, from, to, credentials}` | `tls`: `StartTLS` (default, required), `TLS` or `None` |
+
+- `events`: any of `BackupCompleted`, `BackupFailed`, `RestoreCompleted`, `RestoreFailed`. The default is failures
+  only.
+- `selector`: limits notifications to matching labels, e.g. `matchLabels: {planb.io/schedule: nightly}`.
+- `suspend: true` pauses a Notifier.
+- Delivery is at least once. Each Backup or Restore lists the Notifiers that were told in its `planb.io/notified`
+  annotation, and failed deliveries are retried every minute for an hour.
+- Backups that finished before the Notifier was created, or that were imported from storage, are never notified.
+- To send a test message, use **Test** in the UI, or change the `planb.io/test` annotation:
+  `kubectl annotate notifier -n db telegram-ops planb.io/test="$(date +%s)" --overwrite`. The result shows in
+  `kubectl get notifiers` and in the Notifier's events.
+- Set `manager.clusterName` in the chart to show which cluster sent a message. If a channel is reachable only
+  through a proxy, set `HTTPS_PROXY` and a `NO_PROXY` that covers the cluster in `manager.extraEnv`.
+
 ### Job tuning
 
 `spec.job` on a Backup, a Schedule template, or a Restore accepts `resources`, `nodeSelector`, `tolerations`,
@@ -150,6 +176,31 @@ make test              # unit tests
 make e2e               # agent end-to-end: throwaway PostgreSQL 18 + `rclone serve s3` (no docker)
 make install run       # CRDs into current cluster, run the operator locally
 ```
+
+### Try it in a local cluster
+
+`hack/demo/` deploys a throwaway PostgreSQL (seeded `app` database, 1000 rows) and an S3 endpoint (`rclone serve
+s3`) into the `planb-demo` namespace, with a storage location pointing at it. It then backs up the database and a
+bucket, and restores both next to the originals:
+
+```bash
+kubectl apply -f hack/demo/infra.yaml
+kubectl wait -n planb-demo --for=condition=Available deploy --all
+kubectl get bsl -n planb-demo -w        # wait for Available (re-checked every minute)
+kubectl apply -f hack/demo/backup.yaml
+kubectl get backups -n planb-demo -w
+kubectl apply -f hack/demo/restore.yaml
+kubectl get restores -n planb-demo -w
+
+# compare: app vs app_restored, media/uploads/ vs media/restored/
+kubectl exec -n planb-demo deploy/postgres -- psql -U postgres -d app_restored -c 'select count(*) from customers'
+kubectl exec -n planb-demo deploy/s3 -c s3 -- find /data/media /data/backups -type f
+
+kubectl delete ns planb-demo            # clean up
+```
+
+If the cluster cannot pull from Docker Hub, push `postgres:18-alpine` and `rclone/rclone:1.75` to a reachable registry
+and rewrite the `image:` lines, e.g. `sed 's#image: #image: localhost:5000/#' hack/demo/infra.yaml | kubectl apply -f -`.
 
 Layout:
 

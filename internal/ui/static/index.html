@@ -16,6 +16,7 @@
     }
   }
   * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
   body { margin: 0; font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; background: var(--bg); color: var(--text); }
   header { display: flex; align-items: center; gap: 16px; padding: 12px 20px; background: var(--panel); border-bottom: 1px solid var(--border); flex-wrap: wrap; }
   header h1 { font-size: 18px; margin: 0; letter-spacing: -.3px; }
@@ -26,40 +27,69 @@
   .spacer { flex: 1; }
   main { padding: 20px; max-width: 1400px; margin: 0 auto; }
   .toolbar { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; flex-wrap: wrap; }
-  .toolbar h2 { margin: 0; font-size: 16px; flex: 1; }
-  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; overflow-x: auto; }
+  .toolbar h2 { margin: 0 8px 0 0; font-size: 16px; }
+  .filters { display: flex; gap: 8px; flex-wrap: wrap; }
+  .filters input { width: 200px; }
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; }
+  /* Lists wrap instead of scrolling horizontally: only short cells stay on one line, long values break anywhere. */
   table { width: 100%; border-collapse: collapse; }
-  th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--border); white-space: nowrap; }
-  th { font-size: 12px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .4px; }
-  tr:last-child td { border-bottom: 0; }
-  td.msg { white-space: normal; max-width: 420px; color: var(--muted); font-size: 13px; }
+  th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--border); vertical-align: top; overflow-wrap: anywhere; }
+  th { font-size: 12px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .4px; white-space: nowrap; }
+  tbody tr:last-child td { border-bottom: 0; }
+  td.act { width: 1%; }
+  td.nw { white-space: nowrap; }
+  .sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .msg { font-size: 12px; color: var(--muted); margin-top: 4px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
   .empty { padding: 32px; text-align: center; color: var(--muted); }
-  .phase { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 12px; font-weight: 600; background: var(--chip); }
-  .phase.Completed, .phase.Available, .phase.Enabled { color: var(--ok); }
+  .phase { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 12px; font-weight: 600; background: var(--chip); white-space: nowrap; }
+  .phase.Completed, .phase.Available, .phase.Enabled, .phase.Ready { color: var(--ok); }
   .phase.InProgress, .phase.New, .phase.Paused, .phase.Deleting { color: var(--warn); }
   .phase.Failed, .phase.FailedValidation, .phase.Unavailable { color: var(--bad); }
-  .kind { font-size: 12px; color: var(--muted); }
+  code { font-size: 12.5px; }
   button.btn, select, input, textarea { font: inherit; color: var(--text); }
-  button.btn { background: var(--chip); border: 1px solid var(--border); border-radius: 6px; padding: 5px 10px; cursor: pointer; }
-  button.btn:hover { border-color: var(--accent); }
+  button.btn { background: var(--chip); border: 1px solid var(--border); border-radius: 6px; padding: 5px 10px; cursor: pointer; white-space: nowrap; }
+  button.btn:hover:not(:disabled) { border-color: var(--accent); }
   button.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
-  button.btn.danger:hover { border-color: var(--bad); color: var(--bad); }
+  button.btn.danger:hover:not(:disabled) { border-color: var(--bad); color: var(--bad); }
   button.btn:disabled { opacity: .5; cursor: not-allowed; }
-  .actions { display: flex; gap: 6px; }
-  select, input, textarea { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 5px 8px; }
+  .actions { display: flex; gap: 6px; justify-content: flex-end; flex-wrap: nowrap; }
+  select, input, textarea { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 5px 8px; min-width: 0; }
   textarea { width: 100%; font-family: ui-monospace, Menlo, monospace; font-size: 12.5px; }
+  .pager { display: flex; align-items: center; gap: 8px; justify-content: flex-end; padding: 8px 12px; border-top: 1px solid var(--border); color: var(--muted); font-size: 13px; flex-wrap: wrap; }
+  .pager select { padding: 2px 4px; }
   dialog { border: 1px solid var(--border); border-radius: 10px; background: var(--panel); color: var(--text); padding: 0; width: min(720px, calc(100vw - 32px)); }
   dialog::backdrop { background: rgba(0,0,0,.45); }
-  dialog .head { padding: 14px 18px; border-bottom: 1px solid var(--border); font-weight: 600; display: flex; }
-  dialog .body { padding: 16px 18px; display: grid; gap: 12px; }
-  dialog .foot { padding: 12px 18px; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; gap: 8px; }
+  dialog .head { padding: 14px 18px; border-bottom: 1px solid var(--border); font-weight: 600; }
+  dialog .body { padding: 16px 18px; display: grid; gap: 12px; max-height: calc(100vh - 160px); overflow-y: auto; }
+  dialog .foot { padding: 12px 18px; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; gap: 8px; align-items: center; }
+  dialog .err { color: var(--bad); font-size: 13px; flex: 1; }
   dialog label { display: grid; gap: 4px; font-size: 13px; color: var(--muted); }
   dialog label.inline { display: flex; align-items: center; gap: 8px; color: var(--text); }
+  dialog fieldset { border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px 12px; margin: 0; display: grid; gap: 10px; min-width: 0; }
+  dialog legend { font-size: 12px; color: var(--muted); padding: 0 4px; text-transform: uppercase; letter-spacing: .4px; }
+  .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; }
+  .seg { display: flex; gap: 14px; }
   pre.logs { margin: 0; max-height: 60vh; overflow: auto; font-size: 12px; background: var(--bg); padding: 12px; border-radius: 6px; white-space: pre-wrap; word-break: break-all; }
   #toast { position: fixed; bottom: 20px; right: 20px; padding: 10px 14px; border-radius: 8px; background: var(--text); color: var(--bg); display: none; max-width: 480px; }
   #toast.err { background: var(--bad); color: #fff; }
   .ro { font-size: 12px; color: var(--warn); }
   .hint { font-size: 12px; color: var(--muted); }
+  /* Narrow screens: each row becomes a card. */
+  @media (max-width: 960px) {
+    main { padding: 12px; }
+    thead { display: none; }
+    table, tbody, tr, td { display: block; width: 100%; }
+    tr { padding: 8px 0; border-bottom: 1px solid var(--border); }
+    td { border: 0; padding: 4px 12px; display: grid; grid-template-columns: 96px 1fr; gap: 8px; }
+    td::before { content: attr(data-label); font-size: 12px; color: var(--muted); text-transform: uppercase; }
+    td.act { width: 100%; display: block; }
+    td.act::before { content: none; }
+    .actions { justify-content: flex-start; flex-wrap: wrap; }
+    .toolbar h2 { flex: 1; }
+    .toolbar .spacer { display: none; }
+    .filters { order: 3; flex-basis: 100%; }
+    .filters input { flex: 1; width: auto; }
+  }
 </style>
 </head>
 <body>
@@ -70,23 +100,33 @@
     <button data-tab="schedules">Schedules</button>
     <button data-tab="restores">Restores</button>
     <button data-tab="locations">Storage locations</button>
+    <button data-tab="notifiers">Notifications</button>
   </nav>
   <div class="spacer"></div>
   <span id="ro" class="ro" hidden>read-only</span>
   <label class="hint">Namespace <select id="ns"><option value="">all</option></select></label>
 </header>
-<main id="view"></main>
+<main>
+  <div class="toolbar" id="toolbar"></div>
+  <div id="list"></div>
+</main>
 
-<dialog id="dlg"><form method="dialog">
+<dialog id="dlg"><form method="dialog" id="dlg-form">
   <div class="head" id="dlg-title"></div>
   <div class="body" id="dlg-body"></div>
-  <div class="foot"><button class="btn" value="cancel">Cancel</button><button class="btn primary" id="dlg-ok" value="ok">OK</button></div>
+  <div class="foot"><span class="err" id="dlg-err"></span><button class="btn" value="cancel" formnovalidate>Cancel</button><button class="btn primary" id="dlg-ok" value="ok">OK</button></div>
 </form></dialog>
+<datalist id="dl-ns"></datalist>
+<datalist id="dl-bsl"></datalist>
+<datalist id="dl-sched"></datalist>
 <div id="toast"></div>
 
 <script>
-const state = { tab: "backups", data: null, cfg: { readOnly: false }, ns: "" };
-const $ = (s) => document.querySelector(s);
+const state = {
+  tab: "backups", data: null, cfg: { readOnly: false }, ns: "",
+  filter: { name: "", source: "" }, page: {}, pageSize: 20,
+};
+const $ = (s, root = document) => root.querySelector(s);
 const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
 function bytes(n) {
@@ -103,22 +143,31 @@ function ago(ts) {
 }
 const when = (ts) => ts ? `<span title="${esc(new Date(ts).toLocaleString())}">${ago(ts)}</span>` : "–";
 const phase = (p) => `<span class="phase ${esc(p || "New")}">${esc(p || "New")}</span>`;
-const kind = (spec) => spec?.postgres ? `postgres · ${esc(spec.postgres.host)}${spec.postgres.databases?.length ? " / " + esc(spec.postgres.databases.join(", ")) : " (all)"}`
-  : spec?.bucket ? `bucket · ${esc(spec.bucket.bucket)}${spec.bucket.prefix ? "/" + esc(spec.bucket.prefix) : ""}` : "";
+const msg = (m) => m ? `<div class="msg" title="${esc(m)}">${esc(m)}</div>` : "";
+const sub = (h) => h ? `<div class="sub">${h}</div>` : "";
+
+// Plain-text description of what a backup spec backs up; shown in lists and matched by the source filter.
+const sourceText = (spec) => spec?.postgres
+  ? `postgres · ${spec.postgres.host}${spec.postgres.databases?.length ? " / " + spec.postgres.databases.join(", ") : " (all)"}`
+  : spec?.bucket ? `bucket · ${spec.bucket.endpoint}/${spec.bucket.bucket}${spec.bucket.prefix ? "/" + spec.bucket.prefix : ""}` : "";
+const locationText = (l) => `${l.spec.s3.insecure ? "http" : "https"}://${l.spec.s3.endpoint}/${l.spec.s3.bucket}${l.spec.s3.prefix ? "/" + l.spec.s3.prefix : ""}`;
+
 const btn = (label, action, attrs = "", cls = "") =>
   `<button type="button" class="btn ${cls}" data-action="${action}" ${attrs} ${state.cfg.readOnly && action !== "logs" ? "disabled" : ""}>${label}</button>`;
+const ref = (o) => `data-ns="${esc(o.metadata.namespace)}" data-name="${esc(o.metadata.name)}"`;
+const logsBtn = (o) => o.status?.jobName ? btn("Logs", "logs", `data-ns="${esc(o.metadata.namespace)}" data-job="${esc(o.status.jobName)}"`) : "";
 
-function toast(msg, err) {
-  const t = $("#toast"); t.textContent = msg; t.className = err ? "err" : ""; t.style.display = "block";
+function toast(m, err) {
+  const t = $("#toast"); t.textContent = m; t.className = err ? "err" : ""; t.style.display = "block";
   clearTimeout(t._h); t._h = setTimeout(() => (t.style.display = "none"), err ? 7000 : 3000);
 }
 
 async function api(method, path, body) {
   const r = await fetch(path, { method, headers: body ? { "Content-Type": "application/json" } : {}, body: body ? JSON.stringify(body) : undefined });
   if (!r.ok) {
-    let msg = r.statusText;
-    try { msg = (await r.json()).error || msg; } catch {}
-    throw new Error(msg);
+    let m = r.statusText;
+    try { m = (await r.json()).error || m; } catch {}
+    throw new Error(m);
   }
   const ct = r.headers.get("content-type") || "";
   return r.status === 204 ? null : ct.includes("json") ? r.json() : r.text();
@@ -128,175 +177,493 @@ async function load() {
   try {
     state.data = await api("GET", "/api/overview?namespace=" + encodeURIComponent(state.ns));
     updateNamespaces();
-    render();
+    renderList();
   } catch (e) { toast(e.message, true); }
+}
+
+function allNamespaces() {
+  const d = state.data, set = new Set();
+  if (state.cfg.namespace) return [state.cfg.namespace];
+  [...d.storageLocations, ...d.backups, ...d.schedules, ...d.restores, ...d.notifiers].forEach((o) => set.add(o.metadata.namespace));
+  if (state.ns) set.add(state.ns);
+  return [...set].sort();
 }
 
 function updateNamespaces() {
   if (state.cfg.namespace) return;
-  const sel = $("#ns"), d = state.data, set = new Set();
-  [...d.storageLocations, ...d.backups, ...d.schedules, ...d.restores].forEach((o) => set.add(o.metadata.namespace));
-  if (state.ns) set.add(state.ns);
-  const want = ["", ...[...set].sort()];
-  const have = [...sel.options].map((o) => o.value);
-  if (want.join() !== have.join()) {
+  const sel = $("#ns"), want = ["", ...allNamespaces()];
+  if (want.join() !== [...sel.options].map((o) => o.value).join()) {
     sel.innerHTML = want.map((n) => `<option value="${esc(n)}">${n ? esc(n) : "all"}</option>`).join("");
     sel.value = state.ns;
   }
 }
 
 const multiNs = () => !state.ns && !state.cfg.namespace;
-const nsCol = (o) => multiNs() ? `<td>${esc(o.metadata.namespace)}</td>` : "";
-const nsHead = () => multiNs() ? "<th>Namespace</th>" : "";
-const ref = (o) => `data-ns="${esc(o.metadata.namespace)}" data-name="${esc(o.metadata.name)}"`;
-const table = (head, rows, empty) => `<div class="card">${rows.length ? `<table><thead><tr>${head}</tr></thead><tbody>${rows.join("")}</tbody></table>` : `<div class="empty">${empty}</div>`}</div>`;
+const nameCell = (o, extra = "") =>
+  `<td data-label="Name"><div><b>${esc(o.metadata.name)}</b>${sub([multiNs() ? esc(o.metadata.namespace) : "", extra].filter(Boolean).join(" · "))}</div></td>`;
 
+// Each view returns its toolbar button and rows of { name, source, html } so filtering and paging are generic.
 const views = {
-  backups(d) {
-    const rows = d.backups.map((b) => `<tr>
-      ${nsCol(b)}<td><b>${esc(b.metadata.name)}</b>${b.metadata.labels?.["planb.io/schedule"] ? `<div class="kind">schedule: ${esc(b.metadata.labels["planb.io/schedule"])}</div>` : ""}</td>
-      <td class="kind">${kind(b.spec)}</td><td>${phase(b.status?.phase)}</td><td>${esc(b.spec.storageLocation)}</td>
-      <td>${bytes(b.status?.sizeBytes)}</td><td>${b.status?.items ?? "–"}</td>
-      <td>${when(b.status?.completionTimestamp || b.status?.startTimestamp || b.metadata.creationTimestamp)}</td>
-      <td>${when(b.status?.expiration)}</td><td class="msg">${esc(b.status?.message)}</td>
-      <td><div class="actions">
+  backups: {
+    title: "Backups", empty: "No backups yet.",
+    create: () => btn("New backup", "new-backup", "", "primary"),
+    head: ["Name", "Source", "Status", "Size", "Time", ""],
+    rows: (d) => d.backups.map((b) => ({ obj: b, source: sourceText(b.spec), html: `
+      ${nameCell(b, b.metadata.labels?.["planb.io/schedule"] ? "schedule: " + esc(b.metadata.labels["planb.io/schedule"]) : "")}
+      <td data-label="Source"><div>${esc(sourceText(b.spec))}${sub("→ " + esc(b.spec.storageLocation))}</div></td>
+      <td data-label="Status"><div>${phase(b.status?.phase)}${msg(b.status?.message)}</div></td>
+      <td class="nw" data-label="Size"><div>${bytes(b.status?.sizeBytes)}${sub(b.status?.items != null ? b.status.items + " items" : "")}</div></td>
+      <td class="nw" data-label="Time"><div>${when(b.status?.completionTimestamp || b.status?.startTimestamp || b.metadata.creationTimestamp)}${sub(b.status?.expiration ? "expires " + when(b.status.expiration) : "")}</div></td>
+      <td class="act"><div class="actions">
         ${btn("Restore", "restore", ref(b) + (b.status?.phase !== "Completed" ? " disabled" : ""))}
-        ${b.status?.jobName ? btn("Logs", "logs", `data-ns="${esc(b.metadata.namespace)}" data-job="${esc(b.status.jobName)}"`) : ""}
+        ${logsBtn(b)}
         ${btn("Delete", "delete-backup", ref(b), "danger")}
-      </div></td></tr>`);
-    return `<div class="toolbar"><h2>Backups</h2>${btn("New backup", "new-backup", "", "primary")}</div>` +
-      table(`${nsHead()}<th>Name</th><th>Source</th><th>Phase</th><th>Location</th><th>Size</th><th>Items</th><th>Time</th><th>Expires</th><th>Message</th><th></th>`, rows, "No backups yet.");
+      </div></td>` })),
   },
-  schedules(d) {
-    const rows = d.schedules.map((s) => `<tr>
-      ${nsCol(s)}<td><b>${esc(s.metadata.name)}</b></td><td><code>${esc(s.spec.schedule)}</code></td>
-      <td class="kind">${kind(s.spec.template)}</td><td>${phase(s.status?.phase)}</td>
-      <td>${esc(s.status?.lastBackup || "–")}</td><td>${when(s.status?.lastScheduleTime)}</td><td>${when(s.status?.nextScheduleTime)}</td>
-      <td>${s.spec.keepLast || "–"} / ${esc(s.spec.template.ttl || "default")}</td><td class="msg">${esc(s.status?.message)}</td>
-      <td><div class="actions">
+  schedules: {
+    title: "Schedules", empty: "No schedules yet.",
+    create: () => btn("New schedule", "new-schedule", "", "primary"),
+    head: ["Name", "Cron", "Source", "Status", "Runs", ""],
+    rows: (d) => d.schedules.map((s) => ({ obj: s, source: sourceText(s.spec.template), html: `
+      ${nameCell(s)}
+      <td data-label="Cron"><div><code>${esc(s.spec.schedule)}</code>${sub(`keep ${s.spec.keepLast || "all"} · ttl ${esc(s.spec.template.ttl || "default")}`)}</div></td>
+      <td data-label="Source"><div>${esc(sourceText(s.spec.template))}${sub("→ " + esc(s.spec.template.storageLocation))}</div></td>
+      <td data-label="Status"><div>${phase(s.status?.phase)}${msg(s.status?.message)}</div></td>
+      <td class="nw" data-label="Runs"><div>last ${when(s.status?.lastScheduleTime)}${sub(s.status?.nextScheduleTime ? "next " + when(s.status.nextScheduleTime) : "")}</div></td>
+      <td class="act"><div class="actions">
         ${btn("Run now", "run-schedule", ref(s))}
         ${s.spec.paused ? btn("Resume", "resume", ref(s)) : btn("Pause", "pause", ref(s))}
-      </div></td></tr>`);
-    return `<div class="toolbar"><h2>Schedules</h2></div>` +
-      table(`${nsHead()}<th>Name</th><th>Cron</th><th>Source</th><th>Phase</th><th>Last backup</th><th>Last run</th><th>Next run</th><th>Keep / TTL</th><th>Message</th><th></th>`, rows, "No schedules. Create one with kubectl (see config/samples).");
+        ${btn("Delete", "delete-schedule", ref(s), "danger")}
+      </div></td>` })),
   },
-  restores(d) {
-    const rows = d.restores.map((r) => `<tr>
-      ${nsCol(r)}<td><b>${esc(r.metadata.name)}</b></td><td>${esc(r.spec.backupName)}</td><td>${phase(r.status?.phase)}</td>
-      <td>${bytes(r.status?.sizeBytes)}</td><td>${r.status?.items ?? "–"}</td>
-      <td>${when(r.status?.startTimestamp || r.metadata.creationTimestamp)}</td><td>${when(r.status?.completionTimestamp)}</td>
-      <td class="msg">${esc(r.status?.message)}</td>
-      <td><div class="actions">
-        ${r.status?.jobName ? btn("Logs", "logs", `data-ns="${esc(r.metadata.namespace)}" data-job="${esc(r.status.jobName)}"`) : ""}
+  restores: {
+    title: "Restores", empty: "No restores. Use “Restore” on a completed backup.",
+    head: ["Name", "Backup", "Status", "Size", "Time", ""],
+    rows: (d) => d.restores.map((r) => {
+      const b = d.backups.find((x) => x.metadata.namespace === r.metadata.namespace && x.metadata.name === r.spec.backupName);
+      const source = b ? sourceText(b.spec) : "";
+      return { obj: r, source, html: `
+      ${nameCell(r)}
+      <td data-label="Backup"><div>${esc(r.spec.backupName)}${sub(esc(source))}</div></td>
+      <td data-label="Status"><div>${phase(r.status?.phase)}${msg(r.status?.message)}</div></td>
+      <td class="nw" data-label="Size"><div>${bytes(r.status?.sizeBytes)}${sub(r.status?.items != null ? r.status.items + " items" : "")}</div></td>
+      <td class="nw" data-label="Time"><div>${when(r.status?.startTimestamp || r.metadata.creationTimestamp)}${sub(r.status?.completionTimestamp ? "done " + when(r.status.completionTimestamp) : "")}</div></td>
+      <td class="act"><div class="actions">
+        ${logsBtn(r)}
         ${btn("Delete", "delete-restore", ref(r), "danger")}
-      </div></td></tr>`);
-    return `<div class="toolbar"><h2>Restores</h2></div>` +
-      table(`${nsHead()}<th>Name</th><th>Backup</th><th>Phase</th><th>Size</th><th>Items</th><th>Started</th><th>Completed</th><th>Message</th><th></th>`, rows, "No restores. Use “Restore” on a completed backup.");
+      </div></td>` };
+    }),
   },
-  locations(d) {
-    const rows = d.storageLocations.map((l) => `<tr>
-      ${nsCol(l)}<td><b>${esc(l.metadata.name)}</b></td><td>${phase(l.status?.phase)}</td>
-      <td>${esc(l.spec.s3.insecure ? "http://" : "https://")}${esc(l.spec.s3.endpoint)}</td>
-      <td>${esc(l.spec.s3.bucket)}${l.spec.s3.prefix ? "/" + esc(l.spec.s3.prefix) : ""}</td><td>${esc(l.spec.accessMode || "ReadWrite")}</td>
-      <td>${when(l.status?.lastValidationTime)}</td><td>${when(l.status?.lastSyncTime)}</td><td class="msg">${esc(l.status?.message)}</td></tr>`);
-    return `<div class="toolbar"><h2>Storage locations</h2></div>` +
-      table(`${nsHead()}<th>Name</th><th>Phase</th><th>Endpoint</th><th>Bucket</th><th>Access</th><th>Validated</th><th>Synced</th><th>Message</th>`, rows, "No storage locations configured.");
+  locations: {
+    title: "Storage locations", empty: "No storage locations configured.",
+    create: () => btn("New storage location", "new-location", "", "primary"),
+    head: ["Name", "Bucket", "Status", "Access", "Checked", ""],
+    rows: (d) => d.storageLocations.map((l) => ({ obj: l, source: locationText(l), html: `
+      ${nameCell(l)}
+      <td data-label="Bucket"><div>${esc(locationText(l))}${sub(l.spec.s3.region ? "region " + esc(l.spec.s3.region) : "")}</div></td>
+      <td data-label="Status"><div>${phase(l.status?.phase)}${msg(l.status?.message)}</div></td>
+      <td data-label="Access"><div>${esc(l.spec.accessMode || "ReadWrite")}${sub("sync " + esc(l.spec.syncPeriod || "1m"))}</div></td>
+      <td class="nw" data-label="Checked"><div>${when(l.status?.lastValidationTime)}${sub(l.status?.lastSyncTime ? "synced " + when(l.status.lastSyncTime) : "")}</div></td>
+      <td class="act"><div class="actions">${btn("Delete", "delete-location", ref(l), "danger")}</div></td>` })),
+  },
+  notifiers: {
+    title: "Notifications", empty: "No notifiers. Add one to be told when a backup or restore fails.",
+    create: () => btn("New notifier", "new-notifier", "", "primary"),
+    head: ["Name", "Channel", "Events", "Status", "Last sent", ""],
+    rows: (d) => d.notifiers.map((n) => ({ obj: n, source: channelText(n.spec), html: `
+      ${nameCell(n)}
+      <td data-label="Channel"><div>${esc(channelText(n.spec))}</div></td>
+      <td data-label="Events"><div>${esc((n.spec.events || []).join(", "))}${sub(scopeText(n.spec.selector))}</div></td>
+      <td data-label="Status"><div>${n.spec.suspend ? phase("Paused") : phase(n.status?.phase)}${msg(n.status?.message)}</div></td>
+      <td class="nw" data-label="Last sent"><div>${when(n.status?.lastSentTime)}${sub(n.status?.lastFailureTime ? "failed " + when(n.status.lastFailureTime) : "")}</div></td>
+      <td class="act"><div class="actions">
+        ${btn("Test", "test-notifier", ref(n))}
+        ${btn("Delete", "delete-notifier", ref(n), "danger")}
+      </div></td>` })),
   },
 };
 
-function render() {
-  if (!state.data) return;
-  if (document.querySelector("dialog[open]")) return; // don't disturb an open form
-  $("#view").innerHTML = views[state.tab](state.data);
+// Plain-text description of a notifier's channel; shown in the list and matched by the source filter.
+function channelText(s) {
+  if (s.telegram) return `telegram · chat ${s.telegram.chatID}`;
+  if (s.slack) return `slack · ${s.slack.channel || "webhook " + s.slack.webhookURL.name}`;
+  if (s.webhook) return `webhook · ${s.webhook.url || "url from secret " + s.webhook.urlSecret.name}`;
+  if (s.email) return `email · ${s.email.to.join(", ")} via ${s.email.host}:${s.email.port || 587}`;
+  return "";
+}
+function scopeText(sel) {
+  if (!sel) return "all backups/restores";
+  const l = sel.matchLabels || {};
+  if (l["planb.io/schedule"] && Object.keys(l).length === 1 && !sel.matchExpressions) return "schedule " + l["planb.io/schedule"];
+  return "selector " + JSON.stringify(sel);
 }
 
-function dialog(title, bodyHTML, okLabel = "OK") {
-  return new Promise((resolve) => {
-    const d = $("#dlg");
-    $("#dlg-title").textContent = title;
-    $("#dlg-body").innerHTML = bodyHTML;
-    $("#dlg-ok").textContent = okLabel;
-    $("#dlg-ok").hidden = !okLabel;
-    d.onclose = () => { resolve(d.returnValue === "ok" ? d : null); render(); };
-    d.returnValue = "";
-    d.showModal();
-  });
+function renderToolbar() {
+  const v = views[state.tab];
+  $("#toolbar").innerHTML = `<h2>${v.title}</h2>
+    <div class="filters"><input type="search" id="f-name" placeholder="Filter by name" value="${esc(state.filter.name)}">
+    <input type="search" id="f-source" placeholder="Filter by ${state.tab === "locations" ? "endpoint / bucket" : "source"}" value="${esc(state.filter.source)}"></div>
+    <div class="spacer"></div>${v.create ? v.create() : ""}`;
+}
+
+function renderList() {
+  if (!state.data) return;
+  const v = views[state.tab], all = v.rows(state.data);
+  const fn = state.filter.name.toLowerCase(), fs = state.filter.source.toLowerCase();
+  const rows = all.filter((r) =>
+    (!fn || (r.obj.metadata.namespace + "/" + r.obj.metadata.name).toLowerCase().includes(fn)) &&
+    (!fs || r.source.toLowerCase().includes(fs)));
+  const size = state.pageSize, pages = Math.max(1, Math.ceil(rows.length / size));
+  const page = Math.min(state.page[state.tab] || 0, pages - 1);
+  state.page[state.tab] = page;
+  const shown = rows.slice(page * size, page * size + size);
+  if (!all.length) { $("#list").innerHTML = `<div class="card"><div class="empty">${v.empty}</div></div>`; return; }
+  const head = v.head.map((h) => h === "Name" && multiNs() ? "Name / namespace" : h);
+  $("#list").innerHTML = `<div class="card">${shown.length
+    ? `<table><thead><tr>${head.map((h) => `<th>${h}</th>`).join("")}</tr></thead><tbody>${shown.map((r) => `<tr>${r.html}</tr>`).join("")}</tbody></table>`
+    : `<div class="empty">Nothing matches the filter.</div>`}
+    <div class="pager">
+      <span>${rows.length ? `${page * size + 1}–${page * size + shown.length} of ${rows.length}` : "0"}${rows.length !== all.length ? ` (filtered from ${all.length})` : ""}</span>
+      <select id="page-size">${[10, 20, 50, 100].map((n) => `<option ${n === size ? "selected" : ""}>${n}</option>`).join("")}</select> per page
+      <button type="button" class="btn" data-page="${page - 1}" ${page === 0 ? "disabled" : ""}>‹ Prev</button>
+      <span>${page + 1} / ${pages}</span>
+      <button type="button" class="btn" data-page="${page + 1}" ${page >= pages - 1 ? "disabled" : ""}>Next ›</button>
+    </div></div>`;
+}
+
+// dialog shows a form. onOk receives the form elements; the dialog stays open and shows the error if it throws.
+function dialog(title, bodyHTML, okLabel, onOk, setup) {
+  const d = $("#dlg"), form = $("#dlg-form");
+  $("#dlg-title").textContent = title;
+  $("#dlg-body").innerHTML = bodyHTML;
+  $("#dlg-err").textContent = "";
+  $("#dlg-ok").textContent = okLabel || "";
+  $("#dlg-ok").hidden = !okLabel;
+  form.onsubmit = async (e) => {
+    if (e.submitter?.value !== "ok" || !onOk) return;
+    e.preventDefault();
+    $("#dlg-ok").disabled = true;
+    try { await onOk(form.elements); d.close(); load(); }
+    catch (err) { $("#dlg-err").textContent = err.message; }
+    finally { $("#dlg-ok").disabled = false; }
+  };
+  d.showModal();
+  if (setup) setup(form);
 }
 
 const find = (list, el) => state.data[list].find((o) => o.metadata.namespace === el.dataset.ns && o.metadata.name === el.dataset.name);
-const lines = (v) => v.split(/[\s,]+/).map((s) => s.trim()).filter(Boolean);
+const list = (v) => v.split(/[\s,]+/).map((s) => s.trim()).filter(Boolean);
+const val = (f, n) => (f[n]?.value || "").trim();
+const defaultNs = () => state.ns || state.cfg.namespace || state.data.storageLocations[0]?.metadata.namespace || "";
+const nsField = () => `<label>Namespace<input name="ns" list="dl-ns" value="${esc(defaultNs())}" required ${state.cfg.namespace ? "readonly" : ""}></label>`;
 
-async function restoreDialog(b) {
+// Show only the fieldsets matching the selected option of each switch; disabled fields skip validation.
+function wireSwitches(form) {
+  const update = () => form.querySelectorAll("[data-when]").forEach((el) => {
+    const [name, value] = el.dataset.when.split("=");
+    const on = form.elements[name]?.value === value;
+    el.hidden = !on; el.disabled = !on;
+  });
+  form.addEventListener("change", update);
+  update();
+  const fillBsl = () => {
+    const ns = val(form.elements, "ns");
+    $("#dl-bsl").innerHTML = state.data.storageLocations.filter((l) => l.metadata.namespace === ns)
+      .map((l) => `<option value="${esc(l.metadata.name)}">`).join("");
+  };
+  form.elements.ns?.addEventListener("input", fillBsl);
+  fillBsl();
+  $("#dl-ns").innerHTML = allNamespaces().map((n) => `<option value="${esc(n)}">`).join("");
+}
+
+// Credentials: reference an existing Secret, create a new one from the form, or (S3 only) use none.
+// noneLabel adds a "no credentials" choice.
+function credFields(p, kind, noneLabel) {
+  const [k1, l1, k2, l2] = kind === "pg" ? ["username", "Username", "password", "Password"] : ["accessKey", "Access key", "secretKey", "Secret key"];
+  return `<div class="seg">
+      <label class="inline"><input type="radio" name="${p}cred" value="existing" checked> Existing secret</label>
+      <label class="inline"><input type="radio" name="${p}cred" value="new"> New secret</label>
+      ${noneLabel ? `<label class="inline"><input type="radio" name="${p}cred" value="none"> ${noneLabel}</label>` : ""}
+    </div>
+    <fieldset data-when="${p}cred=existing" class="grid2" style="border:0;padding:0">
+      <label>Secret name (keys ${k1} / ${k2})<input name="${p}secret" required></label>
+    </fieldset>
+    <fieldset data-when="${p}cred=new" class="grid2" style="border:0;padding:0">
+      <label>Secret name<input name="${p}newsecret" required></label>
+      <label>${l1}<input name="${p}k1" required autocomplete="off"></label>
+      <label>${l2}<input name="${p}k2" type="password" required autocomplete="new-password"></label>
+    </fieldset>`;
+}
+function readCred(f, p, kind, secrets) {
+  const [k1, k2] = kind === "pg" ? ["username", "password"] : ["accessKey", "secretKey"];
+  switch (f[p + "cred"].value) {
+    case "existing": return { name: val(f, p + "secret") };
+    case "new": {
+      const name = val(f, p + "newsecret");
+      secrets.push({ name, data: { [k1]: f[p + "k1"].value, [k2]: f[p + "k2"].value } });
+      return { name };
+    }
+  }
+  return undefined;
+}
+
+function s3Fields(p, opts = {}) {
+  return `<div class="grid2">
+      <label>Endpoint (host:port, no scheme)<input name="${p}endpoint" required placeholder="minio.minio.svc:9000"></label>
+      <label>Bucket<input name="${p}bucket" required></label>
+      <label>Prefix (optional)<input name="${p}prefix" value="${esc(opts.prefix || "")}"></label>
+      <label>Region (optional)<input name="${p}region"></label>
+    </div>
+    <div class="seg">
+      <label class="inline"><input type="checkbox" name="${p}insecure"> Plain HTTP</label>
+      <label class="inline"><input type="checkbox" name="${p}skiptls"> Skip TLS verify</label>
+    </div>
+    ${credFields(p, "s3", "None (anonymous / IAM)")}`;
+}
+function readS3(f, p, secrets) {
+  const s3 = { endpoint: val(f, p + "endpoint"), bucket: val(f, p + "bucket") };
+  if (val(f, p + "prefix")) s3.prefix = val(f, p + "prefix");
+  if (val(f, p + "region")) s3.region = val(f, p + "region");
+  if (f[p + "insecure"].checked) s3.insecure = true;
+  if (f[p + "skiptls"].checked) s3.skipTLSVerify = true;
+  const cred = readCred(f, p, "s3", secrets);
+  if (cred) s3.credentials = cred;
+  return s3;
+}
+
+// Backup spec form, shared by "New backup" and "New schedule".
+const backupSpecFields = () => `
+  <div class="grid2">
+    <label>Storage location<input name="bsl" list="dl-bsl" required value="${esc(state.data.storageLocations.find((l) => l.metadata.namespace === defaultNs())?.metadata.name || "")}"></label>
+    <label>TTL (e.g. 720h, empty = default)<input name="ttl" pattern="(\\d+(\\.\\d+)?(ns|us|µs|ms|s|m|h))+" placeholder="720h"></label>
+  </div>
+  <div class="seg">
+    <label class="inline"><input type="radio" name="type" value="postgres" checked> PostgreSQL</label>
+    <label class="inline"><input type="radio" name="type" value="bucket"> Bucket</label>
+  </div>
+  <fieldset data-when="type=postgres"><legend>PostgreSQL</legend>
+    <div class="grid2">
+      <label>Host<input name="pghost" required placeholder="postgres.db.svc"></label>
+      <label>Port<input name="pgport" type="number" min="1" max="65535" value="5432"></label>
+      <label>SSL mode<select name="pgssl">${["prefer", "disable", "allow", "require", "verify-ca", "verify-full"].map((m) => `<option>${m}</option>`).join("")}</select></label>
+      <label>Databases (empty = whole server)<input name="pgdbs" placeholder="app, keycloak"></label>
+    </div>
+    <label class="inline"><input type="checkbox" name="pgglobals"> Include roles and tablespaces</label>
+    ${credFields("pg", "pg")}
+  </fieldset>
+  <fieldset data-when="type=bucket"><legend>Source bucket</legend>${s3Fields("b")}</fieldset>`;
+function readBackupSpec(f, secrets) {
+  const spec = { storageLocation: val(f, "bsl") };
+  if (val(f, "ttl")) spec.ttl = val(f, "ttl");
+  if (f.type.value === "postgres") {
+    spec.postgres = { host: val(f, "pghost"), port: Number(val(f, "pgport")) || 5432, sslMode: f.pgssl.value,
+      credentials: readCred(f, "pg", "pg", secrets) };
+    if (val(f, "pgdbs")) spec.postgres.databases = list(val(f, "pgdbs"));
+    if (f.pgglobals.checked) spec.postgres.includeGlobals = true;
+  } else {
+    spec.bucket = readS3(f, "b", secrets);
+  }
+  return spec;
+}
+
+function newBackupDialog() {
+  dialog("New backup", `
+    <div class="grid2">${nsField()}<label>Name<input name="name" required pattern="[a-z0-9]([-a-z0-9]*[a-z0-9])?" value="manual-${new Date().toISOString().slice(0, 19).replace(/\D/g, "")}"></label></div>
+    ${backupSpecFields()}`, "Create", async (f) => {
+    const secrets = [], spec = readBackupSpec(f, secrets);
+    const b = await api("POST", "/api/backups", { namespace: val(f, "ns"), name: val(f, "name"), secrets, spec });
+    toast(`Backup ${b.metadata.name} created`);
+  }, wireSwitches);
+}
+
+function newScheduleDialog() {
+  dialog("New schedule", `
+    <div class="grid2">${nsField()}<label>Name<input name="name" required pattern="[a-z0-9]([-a-z0-9]*[a-z0-9])?"></label></div>
+    <div class="grid2">
+      <label>Cron (5 fields, @daily, @every 6h, CRON_TZ=…)<input name="cron" required value="0 3 * * *"></label>
+      <label>Keep last (0 = TTL only)<input name="keep" type="number" min="0" value="7"></label>
+    </div>
+    <div class="seg">
+      <label class="inline"><input type="checkbox" name="skip" checked> Skip if previous still running</label>
+      <label class="inline"><input type="checkbox" name="paused"> Create paused</label>
+    </div>
+    ${backupSpecFields()}`, "Create", async (f) => {
+    const secrets = [];
+    const spec = { schedule: val(f, "cron"), keepLast: Number(val(f, "keep")) || 0, skipIfRunning: f.skip.checked,
+      paused: f.paused.checked, template: readBackupSpec(f, secrets) };
+    const s = await api("POST", "/api/schedules", { namespace: val(f, "ns"), name: val(f, "name"), secrets, spec });
+    toast(`Schedule ${s.metadata.name} created`);
+    state.tab = "schedules"; setTab();
+  }, wireSwitches);
+}
+
+function newLocationDialog() {
+  dialog("New storage location", `
+    <div class="grid2">${nsField()}<label>Name<input name="name" required pattern="[a-z0-9]([-a-z0-9]*[a-z0-9])?" value="default"></label></div>
+    <fieldset><legend>Bucket</legend>${s3Fields("s", { prefix: "planb" })}</fieldset>
+    <div class="grid2">
+      <label>Access mode<select name="mode"><option>ReadWrite</option><option value="ReadOnly">ReadOnly (restore only)</option></select></label>
+      <label>Sync period (0s disables)<input name="sync" value="1m" pattern="(\\d+(\\.\\d+)?(ns|us|µs|ms|s|m|h))+"></label>
+    </div>`, "Create", async (f) => {
+    const secrets = [];
+    const spec = { s3: readS3(f, "s", secrets), accessMode: f.mode.value, syncPeriod: val(f, "sync") || "1m" };
+    const l = await api("POST", "/api/storagelocations", { namespace: val(f, "ns"), name: val(f, "name"), secrets, spec });
+    toast(`Storage location ${l.metadata.name} created`);
+  }, wireSwitches);
+}
+
+// A single secret value (token, webhook URL): reference an existing Secret key, or create a Secret from the form.
+function secretValueFields(p, label, key) {
+  return `<div class="seg">
+      <label class="inline"><input type="radio" name="${p}sv" value="existing" checked> Existing secret</label>
+      <label class="inline"><input type="radio" name="${p}sv" value="new"> New secret</label>
+    </div>
+    <fieldset data-when="${p}sv=existing" class="grid2" style="border:0;padding:0">
+      <label>Secret name<input name="${p}svname" required></label>
+      <label>Key holding the ${label.toLowerCase()}<input name="${p}svkey" required value="${key}"></label>
+    </fieldset>
+    <fieldset data-when="${p}sv=new" class="grid2" style="border:0;padding:0">
+      <label>Secret name<input name="${p}svnewname" required></label>
+      <label>${label}<input name="${p}svvalue" type="password" required autocomplete="off"></label>
+    </fieldset>`;
+}
+function readSecretValue(f, p, key, secrets) {
+  if (f[p + "sv"].value === "existing") return { name: val(f, p + "svname"), key: val(f, p + "svkey") };
+  const name = val(f, p + "svnewname");
+  secrets.push({ name, data: { [key]: f[p + "svvalue"].value } });
+  return { name, key };
+}
+
+const notifyEvents = ["BackupFailed", "RestoreFailed", "BackupCompleted", "RestoreCompleted"];
+
+function newNotifierDialog() {
+  dialog("New notifier", `
+    <div class="grid2">${nsField()}<label>Name<input name="name" required pattern="[a-z0-9]([-a-z0-9]*[a-z0-9])?"></label></div>
+    <div class="seg" style="flex-wrap:wrap">
+      ${[["telegram", "Telegram"], ["slack", "Slack / Mattermost"], ["webhook", "Webhook"], ["email", "Email"]].map(([v, l], i) =>
+        `<label class="inline"><input type="radio" name="ch" value="${v}" ${i ? "" : "checked"}> ${l}</label>`).join("")}
+    </div>
+    <fieldset><legend>Notify about</legend>
+      <div class="seg" style="flex-wrap:wrap">${notifyEvents.map((e) =>
+        `<label class="inline"><input type="checkbox" name="ev" value="${e}" ${e.endsWith("Failed") ? "checked" : ""}> ${e.replace(/([a-z])([A-Z])/, "$1 $2").toLowerCase()}</label>`).join("")}</div>
+      <label>Only backups of schedule (optional, empty = everything in the namespace)<input name="sched" list="dl-sched"></label>
+    </fieldset>
+    <fieldset data-when="ch=telegram"><legend>Telegram</legend>
+      <div class="grid2">
+        <label>Chat ID (user, group or @channel)<input name="tgchat" required placeholder="-1001234567890"></label>
+        <label>Bot API URL<input name="tgapi" value="https://api.telegram.org"></label>
+      </div>
+      ${secretValueFields("tg", "Bot token", "token")}
+    </fieldset>
+    <fieldset data-when="ch=slack"><legend>Slack incoming webhook</legend>
+      <label>Channel (optional)<input name="slchannel" placeholder="#backups"></label>
+      ${secretValueFields("sl", "Webhook URL", "url")}
+    </fieldset>
+    <fieldset data-when="ch=webhook"><legend>Webhook</legend>
+      <label>URL (receives a JSON POST per event)<input name="whurl" type="url" required placeholder="https://hooks.example.com/planb"></label>
+    </fieldset>
+    <fieldset data-when="ch=email"><legend>Email (SMTP)</legend>
+      <div class="grid2">
+        <label>SMTP host<input name="emhost" required placeholder="smtp.example.com"></label>
+        <label>Port<input name="emport" type="number" min="1" max="65535" value="587"></label>
+        <label>Security<select name="emtls"><option>StartTLS</option><option>TLS</option><option>None</option></select></label>
+        <label>From<input name="emfrom" type="email" required placeholder="planb@example.com"></label>
+      </div>
+      <label>To (comma separated)<input name="emto" required placeholder="ops@example.com, dba@example.com"></label>
+      <label class="inline"><input type="checkbox" name="emskip"> Skip TLS verify</label>
+      ${credFields("em", "pg", "None (no SMTP auth)")}
+    </fieldset>`, "Create", async (f) => {
+    const secrets = [];
+    const events = [...f.ev].filter((c) => c.checked).map((c) => c.value);
+    if (!events.length) throw new Error("Select at least one event.");
+    const spec = { events };
+    if (val(f, "sched")) spec.selector = { matchLabels: { "planb.io/schedule": val(f, "sched") } };
+    switch (f.ch.value) {
+      case "telegram": spec.telegram = { chatID: val(f, "tgchat"), apiURL: val(f, "tgapi") || undefined, botToken: readSecretValue(f, "tg", "token", secrets) }; break;
+      case "slack": spec.slack = { channel: val(f, "slchannel") || undefined, webhookURL: readSecretValue(f, "sl", "url", secrets) }; break;
+      case "webhook": spec.webhook = { url: val(f, "whurl") }; break;
+      case "email": spec.email = { host: val(f, "emhost"), port: Number(val(f, "emport")) || 587, tls: f.emtls.value, skipTLSVerify: f.emskip.checked,
+        from: val(f, "emfrom"), to: list(val(f, "emto")), credentials: readCred(f, "em", "pg", secrets) }; break;
+    }
+    const n = await api("POST", "/api/notifiers", { namespace: val(f, "ns"), name: val(f, "name"), secrets, spec });
+    toast(`Notifier ${n.metadata.name} created. Use “Test” to send a test message.`);
+  }, (form) => {
+    wireSwitches(form);
+    $("#dl-sched").innerHTML = state.data.schedules.map((s) => `<option value="${esc(s.metadata.name)}">`).join("");
+  });
+}
+
+function restoreDialog(b) {
   const pg = !!b.spec.postgres;
   const body = pg ? `
     <div class="hint">Restores into <b>${esc(b.spec.postgres.host)}</b> by default. Fill in a target to restore elsewhere.</div>
     <label>Databases to restore (empty = all in backup)<input name="dbs" placeholder="${esc((b.spec.postgres.databases || []).join(", "))}"></label>
     <label>Rename databases (source=target, one per line)<textarea name="map" rows="2" placeholder="app=app_restored"></textarea></label>
-    <label>Target host (optional)<input name="host" placeholder="${esc(b.spec.postgres.host)}"></label>
-    <label>Target credentials secret (required with a target host)<input name="secret" placeholder="${esc(b.spec.postgres.credentials.name)}"></label>
+    <div class="grid2">
+      <label>Target host (optional)<input name="host" placeholder="${esc(b.spec.postgres.host)}"></label>
+      <label>Target credentials secret<input name="secret" placeholder="${esc(b.spec.postgres.credentials.name)}"></label>
+    </div>
     <label class="inline"><input type="checkbox" name="clean"> Clean: drop existing objects before restoring</label>
     <label class="inline"><input type="checkbox" name="globals"> Restore roles/tablespaces (if in backup)</label>`
   : `
     <div class="hint">Restores into <b>${esc(b.spec.bucket.bucket)}${b.spec.bucket.prefix ? "/" + esc(b.spec.bucket.prefix) : ""}</b> by default.</div>
-    <label>Target bucket (optional)<input name="bucket" placeholder="${esc(b.spec.bucket.bucket)}"></label>
-    <label>Target prefix (optional)<input name="prefix" placeholder="${esc(b.spec.bucket.prefix || "")}"></label>
+    <div class="grid2">
+      <label>Target bucket (optional)<input name="bucket" placeholder="${esc(b.spec.bucket.bucket)}"></label>
+      <label>Target prefix (optional)<input name="prefix" placeholder="${esc(b.spec.bucket.prefix || "")}"></label>
+    </div>
     <label class="inline"><input type="checkbox" name="overwrite" checked> Overwrite existing objects</label>`;
-  const d = await dialog(`Restore ${b.metadata.name}`, body + `<label>Restore name (optional)<input name="name"></label>`, "Restore");
-  if (!d) return;
-  const f = d.querySelector("form").elements, spec = { backupName: b.metadata.name };
-  if (pg) {
-    spec.postgres = { clean: f.clean.checked, restoreGlobals: f.globals.checked };
-    if (f.dbs.value.trim()) spec.postgres.databases = lines(f.dbs.value);
-    const map = {};
-    f.map.value.split("\n").forEach((l) => { const [k, v] = l.split("=").map((s) => s?.trim()); if (k && v) map[k] = v; });
-    if (Object.keys(map).length) spec.postgres.databaseMapping = map;
-    if (f.host.value.trim()) {
-      spec.postgres.target = { ...b.spec.postgres, host: f.host.value.trim(),
-        credentials: { ...b.spec.postgres.credentials, name: f.secret.value.trim() || b.spec.postgres.credentials.name } };
-      delete spec.postgres.target.databases; delete spec.postgres.target.includeGlobals; delete spec.postgres.target.extraArgs;
+  dialog(`Restore ${b.metadata.name}`, body + `<label>Restore name (optional)<input name="name"></label>`, "Restore", async (f) => {
+    const spec = { backupName: b.metadata.name };
+    if (pg) {
+      spec.postgres = { clean: f.clean.checked, restoreGlobals: f.globals.checked };
+      if (val(f, "dbs")) spec.postgres.databases = list(val(f, "dbs"));
+      const map = {};
+      f.map.value.split("\n").forEach((l) => { const [k, v] = l.split("=").map((s) => s?.trim()); if (k && v) map[k] = v; });
+      if (Object.keys(map).length) spec.postgres.databaseMapping = map;
+      if (val(f, "host")) {
+        const { host, port, sslMode, credentials } = b.spec.postgres;
+        spec.postgres.target = { host, port, sslMode, credentials: { ...credentials, name: val(f, "secret") || credentials.name } };
+        spec.postgres.target.host = val(f, "host");
+      }
+    } else {
+      spec.bucket = { overwrite: f.overwrite.checked };
+      if (val(f, "bucket") || val(f, "prefix")) {
+        spec.bucket.target = { ...b.spec.bucket, bucket: val(f, "bucket") || b.spec.bucket.bucket, prefix: val(f, "prefix") || b.spec.bucket.prefix };
+      }
     }
-  } else {
-    spec.bucket = { overwrite: f.overwrite.checked };
-    if (f.bucket.value.trim() || f.prefix.value.trim()) {
-      spec.bucket.target = { ...b.spec.bucket, bucket: f.bucket.value.trim() || b.spec.bucket.bucket, prefix: f.prefix.value.trim() || b.spec.bucket.prefix };
-    }
-  }
-  const r = await api("POST", "/api/restores", { namespace: b.metadata.namespace, name: f.name.value.trim(), spec });
-  toast(`Restore ${r.metadata.name} created`);
-  state.tab = "restores"; setTab();
+    const r = await api("POST", "/api/restores", { namespace: b.metadata.namespace, name: val(f, "name"), spec });
+    toast(`Restore ${r.metadata.name} created`);
+    state.tab = "restores"; setTab();
+  });
 }
 
-async function newBackupDialog() {
-  const loc = state.data.storageLocations[0];
-  const ns = state.ns || loc?.metadata.namespace || state.cfg.namespace || "";
-  const example = { storageLocation: loc?.metadata.name || "default", ttl: "720h",
-    postgres: { host: "postgres.db.svc", port: 5432, databases: ["app"], credentials: { name: "postgres-credentials" } } };
-  const d = await dialog("New backup", `
-    <label>Namespace<input name="ns" value="${esc(ns)}" required></label>
-    <label>Name (optional)<input name="name"></label>
-    <label>Spec (JSON, see Backup CRD)<textarea name="spec" rows="12">${esc(JSON.stringify(example, null, 2))}</textarea></label>`, "Create");
-  if (!d) return;
-  const f = d.querySelector("form").elements;
-  let spec;
-  try { spec = JSON.parse(f.spec.value); } catch (e) { return toast("Invalid JSON: " + e.message, true); }
-  const b = await api("POST", "/api/backups", { namespace: f.ns.value.trim(), name: f.name.value.trim(), spec });
-  toast(`Backup ${b.metadata.name} created`);
+async function del(kind, path, name, question) {
+  if (!confirm(question)) return;
+  await api("DELETE", `/api/${path}`);
+  toast(`${kind} ${name} deleted`);
+  load();
 }
 
 document.addEventListener("click", async (e) => {
+  const pg = e.target.closest("[data-page]");
+  if (pg && !pg.disabled) { state.page[state.tab] = Number(pg.dataset.page); renderList(); return; }
   const el = e.target.closest("[data-action]");
   if (!el || el.disabled) return;
   const { ns, name } = el.dataset;
   try {
     switch (el.dataset.action) {
-      case "restore": await restoreDialog(find("backups", el)); break;
-      case "new-backup": await newBackupDialog(); break;
-      case "delete-backup":
-        if (!confirm(`Delete backup ${name}? Its data in object storage will be deleted too.`)) return;
-        await api("DELETE", `/api/backups/${ns}/${name}`); toast(`Backup ${name} deleted`); break;
-      case "delete-restore":
-        if (!confirm(`Delete restore record ${name}? (Restored data is not touched.)`)) return;
-        await api("DELETE", `/api/restores/${ns}/${name}`); toast(`Restore ${name} deleted`); break;
+      case "restore": return restoreDialog(find("backups", el));
+      case "new-backup": return newBackupDialog();
+      case "new-schedule": return newScheduleDialog();
+      case "new-location": return newLocationDialog();
+      case "new-notifier": return newNotifierDialog();
+      case "test-notifier":
+        await api("POST", `/api/notifiers/${ns}/${name}/test`); toast(`Test message requested; the result shows in the status`); break;
+      case "delete-backup": return del("Backup", `backups/${ns}/${name}`, name, `Delete backup ${name}? Its data in object storage will be deleted too.`);
+      case "delete-restore": return del("Restore", `restores/${ns}/${name}`, name, `Delete restore record ${name}? (Restored data is not touched.)`);
+      case "delete-schedule": return del("Schedule", `schedules/${ns}/${name}`, name, `Delete schedule ${name}? Backups it created are kept.`);
+      case "delete-location": return del("Storage location", `storagelocations/${ns}/${name}`, name, `Delete storage location ${name}? Backup data in the bucket is kept.`);
+      case "delete-notifier": return del("Notifier", `notifiers/${ns}/${name}`, name, `Delete notifier ${name}?`);
       case "run-schedule": {
         const b = await api("POST", "/api/backups", { namespace: ns, schedule: name });
         toast(`Backup ${b.metadata.name} created`); break;
@@ -305,32 +672,53 @@ document.addEventListener("click", async (e) => {
         await api("POST", `/api/schedules/${ns}/${name}/${el.dataset.action}`); toast(`Schedule ${name} ${el.dataset.action}d`); break;
       case "logs": {
         const text = await api("GET", `/api/logs/${ns}/${el.dataset.job}`);
-        await dialog(`Logs · ${el.dataset.job}`, `<pre class="logs">${esc(text)}</pre>`, "");
-        return;
+        return dialog(`Logs · ${el.dataset.job}`, `<pre class="logs">${esc(text)}</pre>`);
       }
     }
     load();
   } catch (err) { toast(err.message, true); }
 });
 
+document.addEventListener("input", (e) => {
+  if (e.target.id === "f-name" || e.target.id === "f-source") {
+    state.filter[e.target.id === "f-name" ? "name" : "source"] = e.target.value;
+    state.page[state.tab] = 0;
+    renderList();
+  }
+});
+document.addEventListener("change", (e) => {
+  if (e.target.id === "page-size") {
+    state.pageSize = Number(e.target.value);
+    state.page = {};
+    try { localStorage.setItem("planb.pageSize", state.pageSize); } catch {}
+    renderList();
+  }
+});
+
 function setTab() {
   document.querySelectorAll("#tabs button").forEach((b) => b.classList.toggle("active", b.dataset.tab === state.tab));
   try { localStorage.setItem("planb.tab", state.tab); } catch {}
-  render();
+  state.filter = { name: "", source: "" };
+  renderToolbar();
+  renderList();
   load();
 }
 $("#tabs").addEventListener("click", (e) => { if (e.target.dataset.tab) { state.tab = e.target.dataset.tab; setTab(); } });
-$("#ns").addEventListener("change", (e) => { state.ns = e.target.value; load(); });
+$("#ns").addEventListener("change", (e) => { state.ns = e.target.value; state.page = {}; load(); });
 
 (async () => {
-  try { state.tab = localStorage.getItem("planb.tab") || state.tab; } catch {}
+  try {
+    state.tab = localStorage.getItem("planb.tab") || state.tab;
+    state.pageSize = Number(localStorage.getItem("planb.pageSize")) || state.pageSize;
+  } catch {}
+  if (!views[state.tab]) state.tab = "backups";
   try {
     state.cfg = await api("GET", "/api/config");
     $("#ro").hidden = !state.cfg.readOnly;
     if (state.cfg.namespace) { state.ns = state.cfg.namespace; $("#ns").innerHTML = `<option>${esc(state.ns)}</option>`; $("#ns").disabled = true; }
   } catch (e) { toast(e.message, true); }
   setTab();
-  setInterval(load, 5000);
+  setInterval(() => { if (!$("#dlg").open) load(); }, 5000);
 })();
 </script>
 </body>

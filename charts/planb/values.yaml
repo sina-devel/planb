@@ -17,6 +17,13 @@ manager:
   # Image for backup/restore Jobs (default: same as the manager image).
   agentImage: ""
   logLevel: info
+  # Shown in notifications, to tell clusters apart.
+  clusterName: ""
+  # Extra environment variables, e.g. a proxy for reaching Telegram or Slack. A proxy is also used for the
+  # Kubernetes API, so exclude it:
+  #   - { name: HTTPS_PROXY, value: "http://proxy:3128" }
+  #   - { name: NO_PROXY, value: "10.0.0.0/8,.svc,.cluster.local,localhost" }
+  extraEnv: []
   resources:
     requests: { cpu: 50m, memory: 64Mi }
     limits: { memory: 256Mi }

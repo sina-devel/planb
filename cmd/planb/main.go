@@ -90,6 +90,7 @@ func runManager(args []string) error {
 	pullPolicy := fs.String("agent-image-pull-policy", envOr("PLANB_AGENT_IMAGE_PULL_POLICY", "IfNotPresent"), "pull policy for job images")
 	defaultTTL := fs.Duration("default-backup-ttl", 720*time.Hour, "TTL for backups without spec.ttl (0 = keep forever)")
 	jobTTL := fs.Int("job-ttl-seconds", 86400, "keep finished jobs for this many seconds")
+	clusterName := fs.String("cluster-name", os.Getenv("PLANB_CLUSTER_NAME"), "cluster name shown in notifications")
 	opts := zap.Options{}
 	opts.BindFlags(fs)
 	_ = fs.Parse(args)
@@ -149,6 +150,20 @@ func runManager(args []string) error {
 		Recorder: mgr.GetEventRecorder("planb-storagelocation"),
 	}).SetupWithManager(mgr); err != nil {
 		return err
+	}
+	if err := (&controller.NotifierReconciler{
+		Client: mgr.GetClient(), Scheme: scheme, APIReader: mgr.GetAPIReader(),
+		Recorder: mgr.GetEventRecorder("planb-notifier"), ClusterName: *clusterName,
+	}).SetupWithManager(mgr); err != nil {
+		return err
+	}
+	for _, restores := range []bool{false, true} {
+		if err := (&controller.NotificationReconciler{
+			Client: mgr.GetClient(), APIReader: mgr.GetAPIReader(),
+			Recorder: mgr.GetEventRecorder("planb-notifier"), ClusterName: *clusterName, Restores: restores,
+		}).SetupWithManager(mgr); err != nil {
+			return err
+		}
 	}
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
 		return err

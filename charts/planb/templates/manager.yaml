@@ -11,10 +11,10 @@ metadata:
   labels: {{- include "planb.labels" . | nindent 4 }}
 rules:
   - apiGroups: [planb.io]
-    resources: [backups, restores, schedules, backupstoragelocations]
+    resources: [backups, restores, schedules, backupstoragelocations, notifiers]
     verbs: [get, list, watch, create, update, patch, delete]
   - apiGroups: [planb.io]
-    resources: [backups/status, restores/status, schedules/status, backupstoragelocations/status]
+    resources: [backups/status, restores/status, schedules/status, backupstoragelocations/status, notifiers/status]
     verbs: [get, update, patch]
   - apiGroups: [planb.io]
     resources: [backups/finalizers, restores/finalizers]
@@ -91,6 +91,13 @@ spec:
               value: {{ .Values.manager.agentImage | default (include "planb.image" .) | quote }}
             - name: PLANB_AGENT_IMAGE_PULL_POLICY
               value: {{ .Values.image.pullPolicy }}
+            {{- with .Values.manager.clusterName }}
+            - name: PLANB_CLUSTER_NAME
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.manager.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
           ports:
             - { name: metrics, containerPort: 8080 }
             - { name: probes, containerPort: 8081 }

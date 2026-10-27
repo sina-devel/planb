@@ -47,4 +47,8 @@ const (
 	AnnotationSynced = "planb.io/synced-from-storage"
 	// AnnotationRetainData keeps the backup data in storage when the Backup object is deleted.
 	AnnotationRetainData = "planb.io/retain-data"
+	// AnnotationNotified lists the Notifiers that were told about a finished Backup or Restore.
+	AnnotationNotified = "planb.io/notified"
+	// AnnotationTest on a Notifier sends a test message whenever its value changes.
+	AnnotationTest = "planb.io/test"
 )

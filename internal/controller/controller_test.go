@@ -91,3 +91,20 @@ func TestBuildJob(t *testing.T) {
 		t.Fatalf("task roundtrip: %v %+v", err, decoded)
 	}
 }
+
+func TestNotifierWants(t *testing.T) {
+	n := &planbv1.Notifier{}
+	sched := map[string]string{planbv1.LabelSchedule: "nightly"}
+	if !wants(n, planbv1.EventBackupFailed, nil) || wants(n, planbv1.EventBackupCompleted, nil) {
+		t.Fatal("default events must be failures only")
+	}
+	n.Spec.Events = []planbv1.NotificationEvent{planbv1.EventBackupCompleted}
+	n.Spec.Selector = &metav1.LabelSelector{MatchLabels: sched}
+	if !wants(n, planbv1.EventBackupCompleted, sched) || wants(n, planbv1.EventBackupCompleted, nil) {
+		t.Fatal("selector must limit notifications")
+	}
+	n.Spec.Suspend = true
+	if wants(n, planbv1.EventBackupCompleted, sched) {
+		t.Fatal("suspended notifier must not be told")
+	}
+}

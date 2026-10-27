@@ -1,0 +1,130 @@
+# Throwaway test infrastructure for trying planb in a local cluster (k3s, kind, ...):
+#   - PostgreSQL with a seeded "app" database
+#   - an S3 endpoint (rclone serve s3) with two buckets: "backups" (storage location) and "media" (bucket backup source)
+# Nothing is persisted: deleting the namespace removes everything.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: planb-demo
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: postgres-credentials
+  namespace: planb-demo
+stringData:
+  username: postgres
+  password: demo-password
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: s3-credentials
+  namespace: planb-demo
+stringData:
+  accessKey: demo-access
+  secretKey: demo-secret-key
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-seed
+  namespace: planb-demo
+data:
+  seed.sql: |
+    CREATE DATABASE app;
+    \connect app
+    CREATE TABLE customers (id serial PRIMARY KEY, name text NOT NULL, created_at timestamptz DEFAULT now());
+    INSERT INTO customers (name) SELECT 'customer-' || i FROM generate_series(1, 1000) AS i;
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres
+  namespace: planb-demo
+spec:
+  selector: { matchLabels: { app: postgres } }
+  template:
+    metadata: { labels: { app: postgres } }
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:18-alpine
+          env:
+            - { name: POSTGRES_USER, valueFrom: { secretKeyRef: { name: postgres-credentials, key: username } } }
+            - { name: POSTGRES_PASSWORD, valueFrom: { secretKeyRef: { name: postgres-credentials, key: password } } }
+          ports: [{ containerPort: 5432 }]
+          readinessProbe:
+            exec: { command: [pg_isready, -U, postgres] }
+            periodSeconds: 2
+          volumeMounts:
+            - { name: seed, mountPath: /docker-entrypoint-initdb.d }
+            - { name: data, mountPath: /var/lib/postgresql }
+      volumes:
+        - { name: seed, configMap: { name: postgres-seed } }
+        - { name: data, emptyDir: {} }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: planb-demo
+spec:
+  selector: { app: postgres }
+  ports: [{ port: 5432 }]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: s3
+  namespace: planb-demo
+spec:
+  selector: { matchLabels: { app: s3 } }
+  template:
+    metadata: { labels: { app: s3 } }
+    spec:
+      initContainers:
+        # Top-level directories are buckets. Seed "media" with a few objects to back up.
+        - name: seed
+          image: rclone/rclone:1.75
+          command: [sh, -c]
+          args:
+            - |
+              mkdir -p /data/backups /data/media/uploads/2026
+              for i in 1 2 3 4 5; do echo "file $i" > /data/media/uploads/2026/file-$i.txt; done
+              head -c 1048576 /dev/urandom > /data/media/uploads/random.bin
+          volumeMounts: [{ name: data, mountPath: /data }]
+      containers:
+        - name: s3
+          image: rclone/rclone:1.75
+          args: [serve, s3, /data, --addr, ":9000", --auth-key, "demo-access,demo-secret-key"]
+          ports: [{ containerPort: 9000 }]
+          readinessProbe:
+            tcpSocket: { port: 9000 }
+            periodSeconds: 2
+          volumeMounts: [{ name: data, mountPath: /data }]
+      volumes:
+        - { name: data, emptyDir: {} }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: s3
+  namespace: planb-demo
+spec:
+  selector: { app: s3 }
+  ports: [{ port: 9000 }]
+---
+apiVersion: planb.io/v1alpha1
+kind: BackupStorageLocation
+metadata:
+  name: default
+  namespace: planb-demo
+spec:
+  s3:
+    endpoint: s3.planb-demo.svc:9000
+    bucket: backups
+    prefix: planb
+    insecure: true
+    credentials: { name: s3-credentials }
+  syncPeriod: 1m

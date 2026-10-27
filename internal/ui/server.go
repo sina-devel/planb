@@ -17,6 +17,7 @@ import (
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -52,7 +53,14 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("DELETE /api/backups/{ns}/{name}", s.mutating(s.deleteBackup))
 	mux.HandleFunc("POST /api/restores", s.mutating(s.createRestore))
 	mux.HandleFunc("DELETE /api/restores/{ns}/{name}", s.mutating(s.deleteRestore))
+	mux.HandleFunc("POST /api/schedules", s.mutating(s.createSchedule))
+	mux.HandleFunc("DELETE /api/schedules/{ns}/{name}", s.mutating(s.deleteSchedule))
 	mux.HandleFunc("POST /api/schedules/{ns}/{name}/{action}", s.mutating(s.toggleSchedule))
+	mux.HandleFunc("POST /api/storagelocations", s.mutating(s.createStorageLocation))
+	mux.HandleFunc("DELETE /api/storagelocations/{ns}/{name}", s.mutating(s.deleteStorageLocation))
+	mux.HandleFunc("POST /api/notifiers", s.mutating(s.createNotifier))
+	mux.HandleFunc("DELETE /api/notifiers/{ns}/{name}", s.mutating(s.deleteNotifier))
+	mux.HandleFunc("POST /api/notifiers/{ns}/{name}/test", s.mutating(s.testNotifier))
 	return s.auth(mux)
 }
 
@@ -127,8 +135,9 @@ func (s *Server) overview(w http.ResponseWriter, r *http.Request) {
 		backups   planbv1.BackupList
 		schedules planbv1.ScheduleList
 		restores  planbv1.RestoreList
+		notifiers planbv1.NotifierList
 	)
-	for _, l := range []client.ObjectList{&bsls, &backups, &schedules, &restores} {
+	for _, l := range []client.ObjectList{&bsls, &backups, &schedules, &restores, &notifiers} {
 		if err := s.Client.List(ctx, l, opts...); err != nil {
 			writeErr(w, http.StatusInternalServerError, err)
 			return
@@ -145,12 +154,54 @@ func (s *Server) overview(w http.ResponseWriter, r *http.Request) {
 		"backups":          backups.Items,
 		"schedules":        schedules.Items,
 		"restores":         restores.Items,
+		"notifiers":        notifiers.Items,
 	})
 }
 
-type createBackupRequest struct {
+// secretRequest is a credentials Secret created together with the object that references it.
+type secretRequest struct {
+	Name string            `json:"name"`
+	Data map[string]string `json:"data"`
+}
+
+// createMeta is common to all create requests.
+type createMeta struct {
 	Namespace string `json:"namespace"`
 	Name      string `json:"name,omitempty"`
+	// Secrets are created before the object. Existing Secrets are never overwritten.
+	Secrets []secretRequest `json:"secrets,omitempty"`
+}
+
+func (m *createMeta) meta() *createMeta { return m }
+
+// decodeCreate decodes a create request, resolves its namespace and creates the requested Secrets.
+func (s *Server) decodeCreate(w http.ResponseWriter, r *http.Request, req interface{ meta() *createMeta }) (string, bool) {
+	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(req); err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return "", false
+	}
+	m := req.meta()
+	ns, err := s.namespace(m.Namespace)
+	if err != nil || ns == "" {
+		writeErr(w, http.StatusBadRequest, fmt.Errorf("a valid namespace is required"))
+		return "", false
+	}
+	for _, sr := range m.Secrets {
+		sec := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{Namespace: ns, Name: sr.Name,
+				Labels: map[string]string{planbv1.LabelManagedBy: "planb-ui"}},
+			StringData: sr.Data,
+		}
+		if err := s.Client.Create(r.Context(), sec); err != nil {
+			writeErr(w, http.StatusBadRequest, fmt.Errorf("creating secret %s: %w", sr.Name, err))
+			return "", false
+		}
+	}
+	return ns, true
+}
+
+type createBackupRequest struct {
+	createMeta
 	// Schedule creates the backup from a schedule's template ("run now").
 	Schedule string              `json:"schedule,omitempty"`
 	Spec     *planbv1.BackupSpec `json:"spec,omitempty"`
@@ -158,13 +209,8 @@ type createBackupRequest struct {
 
 func (s *Server) createBackup(w http.ResponseWriter, r *http.Request) {
 	req := &createBackupRequest{}
-	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(req); err != nil {
-		writeErr(w, http.StatusBadRequest, err)
-		return
-	}
-	ns, err := s.namespace(req.Namespace)
-	if err != nil || ns == "" {
-		writeErr(w, http.StatusBadRequest, fmt.Errorf("a valid namespace is required"))
+	ns, ok := s.decodeCreate(w, r, req)
+	if !ok {
 		return
 	}
 	var b *planbv1.Backup
@@ -220,20 +266,14 @@ func (s *Server) deleteObject(w http.ResponseWriter, r *http.Request, obj client
 }
 
 type createRestoreRequest struct {
-	Namespace string              `json:"namespace"`
-	Name      string              `json:"name,omitempty"`
-	Spec      planbv1.RestoreSpec `json:"spec"`
+	createMeta
+	Spec planbv1.RestoreSpec `json:"spec"`
 }
 
 func (s *Server) createRestore(w http.ResponseWriter, r *http.Request) {
 	req := &createRestoreRequest{}
-	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(req); err != nil {
-		writeErr(w, http.StatusBadRequest, err)
-		return
-	}
-	ns, err := s.namespace(req.Namespace)
-	if err != nil || ns == "" {
-		writeErr(w, http.StatusBadRequest, fmt.Errorf("a valid namespace is required"))
+	ns, ok := s.decodeCreate(w, r, req)
+	if !ok {
 		return
 	}
 	rs := &planbv1.Restore{ObjectMeta: metav1.ObjectMeta{Namespace: ns, Name: req.Name}, Spec: req.Spec}
@@ -245,6 +285,95 @@ func (s *Server) createRestore(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusCreated, rs)
+}
+
+type createScheduleRequest struct {
+	createMeta
+	Spec planbv1.ScheduleSpec `json:"spec"`
+}
+
+func (s *Server) createSchedule(w http.ResponseWriter, r *http.Request) {
+	req := &createScheduleRequest{}
+	ns, ok := s.decodeCreate(w, r, req)
+	if !ok {
+		return
+	}
+	if _, err := controller.ParseSchedule(req.Spec.Schedule); err != nil {
+		writeErr(w, http.StatusBadRequest, fmt.Errorf("invalid schedule: %w", err))
+		return
+	}
+	sched := &planbv1.Schedule{ObjectMeta: metav1.ObjectMeta{Namespace: ns, Name: req.Name}, Spec: req.Spec}
+	if err := s.Client.Create(r.Context(), sched); err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, sched)
+}
+
+func (s *Server) deleteSchedule(w http.ResponseWriter, r *http.Request) {
+	s.deleteObject(w, r, &planbv1.Schedule{})
+}
+
+type createStorageLocationRequest struct {
+	createMeta
+	Spec planbv1.BackupStorageLocationSpec `json:"spec"`
+}
+
+func (s *Server) createStorageLocation(w http.ResponseWriter, r *http.Request) {
+	req := &createStorageLocationRequest{}
+	ns, ok := s.decodeCreate(w, r, req)
+	if !ok {
+		return
+	}
+	bsl := &planbv1.BackupStorageLocation{ObjectMeta: metav1.ObjectMeta{Namespace: ns, Name: req.Name}, Spec: req.Spec}
+	if err := s.Client.Create(r.Context(), bsl); err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, bsl)
+}
+
+func (s *Server) deleteStorageLocation(w http.ResponseWriter, r *http.Request) {
+	s.deleteObject(w, r, &planbv1.BackupStorageLocation{})
+}
+
+type createNotifierRequest struct {
+	createMeta
+	Spec planbv1.NotifierSpec `json:"spec"`
+}
+
+func (s *Server) createNotifier(w http.ResponseWriter, r *http.Request) {
+	req := &createNotifierRequest{}
+	ns, ok := s.decodeCreate(w, r, req)
+	if !ok {
+		return
+	}
+	n := &planbv1.Notifier{ObjectMeta: metav1.ObjectMeta{Namespace: ns, Name: req.Name}, Spec: req.Spec}
+	if err := s.Client.Create(r.Context(), n); err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, n)
+}
+
+func (s *Server) deleteNotifier(w http.ResponseWriter, r *http.Request) {
+	s.deleteObject(w, r, &planbv1.Notifier{})
+}
+
+// testNotifier asks the operator to send a test message by changing the planb.io/test annotation.
+func (s *Server) testNotifier(w http.ResponseWriter, r *http.Request) {
+	ns, err := s.namespace(r.PathValue("ns"))
+	if err != nil {
+		writeErr(w, http.StatusForbidden, err)
+		return
+	}
+	n := &planbv1.Notifier{ObjectMeta: metav1.ObjectMeta{Namespace: ns, Name: r.PathValue("name")}}
+	patch := fmt.Sprintf(`{"metadata":{"annotations":{%q:%q}}}`, planbv1.AnnotationTest, time.Now().UTC().Format(time.RFC3339Nano))
+	if err := s.Client.Patch(r.Context(), n, client.RawPatch(types.MergePatchType, []byte(patch))); err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, n)
 }
 
 func (s *Server) toggleSchedule(w http.ResponseWriter, r *http.Request) {
