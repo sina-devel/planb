@@ -55,12 +55,17 @@ Backup CR ──> operator ──> Job (planb agent) ──stream──> s3://bu
 
 ## Install
 
+Images for `linux/amd64` and `linux/arm64` are published to `ghcr.io/sina-devel/planb` by GitHub Actions
+(`.github/workflows/image.yaml`): `main` for the main branch, `sha-<commit>` for each commit, and `X.Y.Z` / `X.Y` for
+`vX.Y.Z` tags.
+
 ```bash
-make docker-build docker-push IMG=registry.example.com/planb:0.1.0
 helm upgrade --install planb charts/planb -n planb-system --create-namespace \
-  --set image.repository=registry.example.com/planb --set image.tag=0.1.0 \
+  --set image.tag=main \
   --set ui.enabled=true --set ui.auth.username=admin --set ui.auth.password='change-me'
 ```
+
+To build your own image: `make docker-build docker-push IMG=registry.example.com/planb:dev`.
 
 CRDs are under `charts/planb/crds/` and Helm installs them. Regenerate them with `make generate` after changing
 `api/`.
