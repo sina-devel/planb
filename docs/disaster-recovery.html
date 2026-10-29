@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Disaster recovery · planb</title>
+<meta name="description" content="Restore into a new cluster after losing the old one, rehearse it regularly, and recover by hand if planb itself isn't available.">
+<link rel="icon" href="assets/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="assets/site.css">
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <a class="logo" href="./">plan<span>b</span></a>
+    <nav>
+      <a href="getting-started.html" class="active">Docs</a>
+      <a class="hide-sm" href="reference.html">API</a>
+      <a href="https://github.com/sina-devel/planb">GitHub</a>
+    </nav>
+  </div>
+</header>
+<div class="wrap docs">
+<aside class="side"><details open><summary>Documentation menu</summary>
+<h4>Start</h4><ul>
+<li><a href="getting-started.html">Getting started</a></li>
+<li><a href="concepts.html">Concepts</a></li>
+</ul>
+<h4>Guides</h4><ul>
+<li><a href="storage-locations.html">Storage locations</a></li>
+<li><a href="postgres.html">PostgreSQL</a></li>
+<li><a href="buckets.html">S3 buckets</a></li>
+<li><a href="schedules.html">Schedules and retention</a></li>
+<li><a href="notifications.html">Notifications</a></li>
+<li><a href="reliability.html">Retries and reliability</a></li>
+<li><a href="disaster-recovery.html" aria-current="page">Disaster recovery</a></li>
+<li><a href="ui.html">Web UI</a></li>
+</ul>
+<h4>Operate</h4><ul>
+<li><a href="installation.html">Installation and Helm</a></li>
+<li><a href="upgrading.html">Upgrading</a></li>
+<li><a href="troubleshooting.html">Troubleshooting</a></li>
+</ul>
+<h4>Reference</h4><ul>
+<li><a href="reference.html">API reference</a></li>
+<li><a href="development.html">Development</a></li>
+</ul></details></aside>
+<main><article>
+<h1>Disaster recovery</h1>
+<p class="lead">Restore into a new cluster after losing the old one, rehearse it regularly, and recover by hand if planb itself isn't available.</p>
+<h2 id="new-cluster">Restore in a new cluster<a class="anchor" href="#new-cluster" aria-label="Link to this section">#</a></h2>
+<p>Everything planb needs is in the bucket: the data and a <code>planb-backup.json</code> describing each backup. A
+  new cluster only needs planb, the credentials and a storage location pointing at the same bucket and prefix.</p>
+<ol>
+  <li><strong>Install planb</strong> in the new cluster (<a href="getting-started.html#install">Getting started</a>).</li>
+  <li><strong>Create the namespace and Secrets:</strong> the S3 key for the backup bucket, and the database or bucket
+    credentials for the restore targets.</li>
+  <li><strong>Attach the bucket read-only</strong>, with the same bucket and prefix as before:
+<pre>apiVersion: planb.sina-devel.github.io/v1alpha1
+kind: BackupStorageLocation
+metadata:
+  name: recovery
+  namespace: db
+spec:
+  accessMode: ReadOnly        # restores only: nothing in the bucket can be changed or deleted
+  syncPeriod: 30s
+  s3:
+    endpoint: s3.eu-central-1.amazonaws.com
+    region: eu-central-1
+    bucket: my-backups
+    prefix: planb
+    credentials: { name: backup-bucket }</pre></li>
+  <li><strong>Wait for the backups to appear.</strong> Imported backups keep their original names and labels:
+<pre>kubectl get backups -n db -l planb.sina-devel.github.io/storage-location=recovery</pre></li>
+  <li><strong>Restore.</strong> If the database host is different in the new cluster, set
+    <code>postgres.target</code>:
+<pre>apiVersion: planb.sina-devel.github.io/v1alpha1
+kind: Restore
+metadata:
+  name: app-recovery
+  namespace: db
+spec:
+  backupName: app-nightly-20261029010000
+  postgres:
+    target:
+      host: postgres.db.svc
+      credentials: { name: postgres-credentials }</pre></li>
+  <li><strong>Hand over ownership</strong> when the new cluster becomes the primary: change the location to
+    <code>ReadWrite</code>, or create a new one, and recreate the Schedules.</li>
+</ol>
+<div class="callout"><strong>Namespaces must match</strong>
+  <p>Sync imports backups into the namespace of the storage location. Put the location in the namespace where you
+    want the Backups, which doesn't have to be the original one.</p></div>
+
+<h2 id="drills">Rehearse<a class="anchor" href="#drills" aria-label="Link to this section">#</a></h2>
+<p>A backup you haven't restored is a hope, not a backup. A cheap, regular drill:</p>
+<ul>
+  <li>A Schedule takes nightly backups, with a Notifier for <code>BackupFailed</code>.</li>
+  <li>Once a week, a script or CI job creates a Restore of the newest backup with
+    <code>databaseMapping: {app: app_drill}</code>, checks row counts or runs smoke queries, then drops
+    <code>app_drill</code>.</li>
+  <li>Once a quarter, run the full new-cluster procedure above in a scratch cluster with a <code>ReadOnly</code>
+    location.</li>
+</ul>
+<p>The repository's <code>hack/e2e-k8s.sh</code> is an example of driving every feature with plain
+  <code>kubectl</code> and checking the results.</p>
+
+<h2 id="manual">Manual restore without planb<a class="anchor" href="#manual" aria-label="Link to this section">#</a></h2>
+<p>The backup format is plain files, so you can always recover with standard tools:</p>
+<pre># download a backup folder (any S3 tool works)
+rclone copy s3remote:my-backups/planb/backups/app-nightly-20261029010000 ./backup
+
+# per-database backup
+createdb -h db.example.com -U postgres app
+pg_restore -h db.example.com -U postgres --dbname=app ./backup/postgres/app.dump
+
+# roles and tablespaces
+gunzip -c ./backup/postgres/globals.sql.gz | psql -h db.example.com -U postgres -d postgres
+
+# full-server backup, into an empty server
+gunzip -c ./backup/postgres/all.sql.gz | psql -h db.example.com -U postgres -d postgres
+
+# bucket backup: copy the objects back
+rclone copy ./backup/bucket s3remote:media/uploads</pre>
+<p><code>planb-backup.json</code> records the original spec, the time of the backup, the file list and the
+  sizes.</p>
+<nav class="pager" aria-label="Previous and next page">
+<a href="reliability.html"><small>Previous</small>Retries and reliability</a>
+<a class="next" href="ui.html"><small>Next</small>Web UI</a>
+</nav>
+</article></main>
+</div>
+<footer>
+  <div class="wrap">
+    <span>planb: backup and restore for Kubernetes data services</span>
+    <a href="https://github.com/sina-devel/planb/edit/main/docs/disaster-recovery.html">Edit this page on GitHub</a>
+  </div>
+</footer>
+<script>
+  // On narrow screens the menu starts collapsed.
+  if (window.matchMedia("(max-width: 860px)").matches) document.querySelector("aside.side details").removeAttribute("open");
+</script>
+</body>
+</html>

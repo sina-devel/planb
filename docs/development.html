@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Development · planb</title>
+<meta name="description" content="Build planb, run it against a cluster from your machine, and run the unit, agent and cluster test suites.">
+<link rel="icon" href="assets/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="assets/site.css">
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <a class="logo" href="./">plan<span>b</span></a>
+    <nav>
+      <a href="getting-started.html" class="active">Docs</a>
+      <a class="hide-sm" href="reference.html">API</a>
+      <a href="https://github.com/sina-devel/planb">GitHub</a>
+    </nav>
+  </div>
+</header>
+<div class="wrap docs">
+<aside class="side"><details open><summary>Documentation menu</summary>
+<h4>Start</h4><ul>
+<li><a href="getting-started.html">Getting started</a></li>
+<li><a href="concepts.html">Concepts</a></li>
+</ul>
+<h4>Guides</h4><ul>
+<li><a href="storage-locations.html">Storage locations</a></li>
+<li><a href="postgres.html">PostgreSQL</a></li>
+<li><a href="buckets.html">S3 buckets</a></li>
+<li><a href="schedules.html">Schedules and retention</a></li>
+<li><a href="notifications.html">Notifications</a></li>
+<li><a href="reliability.html">Retries and reliability</a></li>
+<li><a href="disaster-recovery.html">Disaster recovery</a></li>
+<li><a href="ui.html">Web UI</a></li>
+</ul>
+<h4>Operate</h4><ul>
+<li><a href="installation.html">Installation and Helm</a></li>
+<li><a href="upgrading.html">Upgrading</a></li>
+<li><a href="troubleshooting.html">Troubleshooting</a></li>
+</ul>
+<h4>Reference</h4><ul>
+<li><a href="reference.html">API reference</a></li>
+<li><a href="development.html" aria-current="page">Development</a></li>
+</ul></details></aside>
+<main><article>
+<h1>Development</h1>
+<p class="lead">Build planb, run it against a cluster from your machine, and run the unit, agent and cluster test suites.</p>
+<h2 id="setup">Setup<a class="anchor" href="#setup" aria-label="Link to this section">#</a></h2>
+<p>The repository has a Nix dev shell with Go, controller-gen, Helm, kind, PostgreSQL and rclone. Without Nix,
+  install those yourself; <code>make generate</code> falls back to <code>go run</code> for controller-gen.</p>
+<pre>nix develop            # or nix-shell, or direnv allow
+make tidy generate     # dependencies, deepcopy code, CRDs and RBAC
+make build             # bin/planb</pre>
+
+<h2 id="layout">Layout<a class="anchor" href="#layout" aria-label="Link to this section">#</a></h2>
+<pre>api/v1alpha1/         CRD types; `make generate` writes charts/planb/crds/
+cmd/planb/            one binary: manager | agent | ui
+internal/controller/  reconcilers: backup, restore, schedule, storage location, notifier
+internal/agent/       data movers inside Jobs: pg_dump/pg_restore, bucket copy and prune
+internal/storage/     S3 client (minio-go) with resumable reads and listings
+internal/retry/       exponential backoff with jitter
+internal/notify/      Telegram, Slack, webhook and email senders
+internal/task/        the operator ↔ agent contract (PLANB_TASK JSON, termination message)
+internal/ui/          UI server and its single embedded HTML page
+charts/planb/         Helm chart
+docs/                 this website (static HTML, deployed by .github/workflows/pages.yaml)
+hack/                 demo manifests and end-to-end tests</pre>
+
+<h2 id="run">Run locally<a class="anchor" href="#run" aria-label="Link to this section">#</a></h2>
+<pre>make install           # CRDs into the current kubeconfig context
+make run               # the operator, from your machine
+make run-ui            # the UI on http://localhost:8090</pre>
+<p>The operator still starts Jobs in the cluster, so <code>IMG</code> must point at an image the cluster can pull:
+  <code>make run IMG=localhost:5000/planb:dev</code>.</p>
+
+<h2 id="tests">Tests<a class="anchor" href="#tests" aria-label="Link to this section">#</a></h2>
+<div class="table-wrap"><table>
+  <thead><tr><th>Command</th><th>Covers</th><th>Needs</th></tr></thead>
+  <tbody>
+    <tr><td><code>make test</code></td><td class="wrap-ok">unit tests: retry policy, error classification, resumable downloads against a fault-injecting fake S3, controllers, notifiers</td><td class="wrap-ok">Go</td></tr>
+    <tr><td><code>make e2e</code></td><td class="wrap-ok">the agent against a real PostgreSQL 18 and <code>rclone serve s3</code>: dumps, restores, clean, bucket copy, overwrite, prune, an S3 outage</td><td class="wrap-ok">postgresql, rclone; no Docker or cluster</td></tr>
+    <tr><td><code>hack/e2e-k8s.sh</code></td><td class="wrap-ok">every feature in a real cluster against an installed planb: locations, backups, restores, prune, outage retries, read-only, deletion, retain-data, sync, TTL, schedules, notifiers, UI API</td><td class="wrap-ok">a cluster with planb installed (UI with basic auth for the UI checks); about 10 minutes</td></tr>
+  </tbody>
+</table></div>
+<pre>KUBE_CONTEXT=k3s IMAGE_PREFIX=localhost:5000/ hack/e2e-k8s.sh   # KEEP=1 keeps the namespace</pre>
+
+<h2 id="images">Images<a class="anchor" href="#images" aria-label="Link to this section">#</a></h2>
+<p><code>.github/workflows/image.yaml</code> runs the tests and publishes multi-arch images to
+  <code>ghcr.io/sina-devel/planb</code> on every push to <code>main</code> and on <code>v*</code> tags. To test a build
+  in a local cluster such as k3s with a local registry:</p>
+<pre>make docker-build docker-push IMG=localhost:5000/planb:dev
+kubectl apply --server-side -f charts/planb/crds
+helm upgrade --install planb charts/planb -n planb-system --create-namespace \
+  --set image.repository=localhost:5000/planb --set image.tag=dev --set image.pullPolicy=Always</pre>
+
+<h2 id="docs">This website<a class="anchor" href="#docs" aria-label="Link to this section">#</a></h2>
+<p>The site is plain HTML in <code>docs/</code>, with shared styles in <code>docs/assets/site.css</code>. Edit the
+  pages directly; a push to <code>main</code> that changes <code>docs/</code> deploys it to GitHub Pages. When you add
+  a page, add it to the sidebar of every page and to the previous/next links of its neighbours.</p>
+
+<h2 id="roadmap">Roadmap<a class="anchor" href="#roadmap" aria-label="Link to this section">#</a></h2>
+<ul>
+  <li>Client-side encryption of backups (age/AES) and checksums in the metadata</li>
+  <li>More databases: MySQL/MariaDB, MongoDB, Redis</li>
+  <li>Point-in-time recovery for PostgreSQL (WAL archiving)</li>
+  <li>Prometheus metrics for backup age, size and failures</li>
+  <li>Incremental bucket backups</li>
+</ul>
+<nav class="pager" aria-label="Previous and next page">
+<a href="reference.html"><small>Previous</small>API reference</a>
+</nav>
+</article></main>
+</div>
+<footer>
+  <div class="wrap">
+    <span>planb: backup and restore for Kubernetes data services</span>
+    <a href="https://github.com/sina-devel/planb/edit/main/docs/development.html">Edit this page on GitHub</a>
+  </div>
+</footer>
+<script>
+  // On narrow screens the menu starts collapsed.
+  if (window.matchMedia("(max-width: 860px)").matches) document.querySelector("aside.side details").removeAttribute("open");
+</script>
+</body>
+</html>

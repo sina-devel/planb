@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Storage locations · planb</title>
+<meta name="description" content="A BackupStorageLocation is an S3-compatible bucket that holds backups. planb checks it, writes to it, deletes from it and imports what it finds there.">
+<link rel="icon" href="assets/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="assets/site.css">
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <a class="logo" href="./">plan<span>b</span></a>
+    <nav>
+      <a href="getting-started.html" class="active">Docs</a>
+      <a class="hide-sm" href="reference.html">API</a>
+      <a href="https://github.com/sina-devel/planb">GitHub</a>
+    </nav>
+  </div>
+</header>
+<div class="wrap docs">
+<aside class="side"><details open><summary>Documentation menu</summary>
+<h4>Start</h4><ul>
+<li><a href="getting-started.html">Getting started</a></li>
+<li><a href="concepts.html">Concepts</a></li>
+</ul>
+<h4>Guides</h4><ul>
+<li><a href="storage-locations.html" aria-current="page">Storage locations</a></li>
+<li><a href="postgres.html">PostgreSQL</a></li>
+<li><a href="buckets.html">S3 buckets</a></li>
+<li><a href="schedules.html">Schedules and retention</a></li>
+<li><a href="notifications.html">Notifications</a></li>
+<li><a href="reliability.html">Retries and reliability</a></li>
+<li><a href="disaster-recovery.html">Disaster recovery</a></li>
+<li><a href="ui.html">Web UI</a></li>
+</ul>
+<h4>Operate</h4><ul>
+<li><a href="installation.html">Installation and Helm</a></li>
+<li><a href="upgrading.html">Upgrading</a></li>
+<li><a href="troubleshooting.html">Troubleshooting</a></li>
+</ul>
+<h4>Reference</h4><ul>
+<li><a href="reference.html">API reference</a></li>
+<li><a href="development.html">Development</a></li>
+</ul></details></aside>
+<main><article>
+<h1>Storage locations</h1>
+<p class="lead">A BackupStorageLocation is an S3-compatible bucket that holds backups. planb checks it, writes to it, deletes from it and imports what it finds there.</p>
+<h2 id="example">Example<a class="anchor" href="#example" aria-label="Link to this section">#</a></h2>
+<pre>apiVersion: planb.sina-devel.github.io/v1alpha1
+kind: BackupStorageLocation
+metadata:
+  name: default
+  namespace: db
+spec:
+  s3:
+    endpoint: s3.eu-central-1.amazonaws.com
+    region: eu-central-1
+    bucket: my-backups
+    prefix: planb
+    credentials:
+      name: backup-bucket          # Secret in the same namespace
+      accessKeyIdKey: accessKey    # default
+      secretAccessKeyKey: secretKey  # default
+  accessMode: ReadWrite            # or ReadOnly
+  syncPeriod: 1m                   # 0s disables sync</pre>
+<p>Backups refer to a location by name (<code>spec.storageLocation</code>), so each namespace that has Backups needs
+  at least one location. Several locations can share a bucket if their prefixes differ.</p>
+
+<h2 id="s3">Connecting to S3<a class="anchor" href="#s3" aria-label="Link to this section">#</a></h2>
+<div class="table-wrap"><table>
+  <thead><tr><th>Field</th><th>Meaning</th></tr></thead>
+  <tbody>
+    <tr><td><code>endpoint</code></td><td class="wrap-ok"><code>host[:port]</code> without a scheme, for example <code>s3.amazonaws.com</code>, <code>minio.minio.svc:9000</code> or <code>&lt;account&gt;.r2.cloudflarestorage.com</code>.</td></tr>
+    <tr><td><code>bucket</code></td><td class="wrap-ok">Bucket name. It must already exist; planb never creates buckets.</td></tr>
+    <tr><td><code>prefix</code></td><td class="wrap-ok">Optional folder. Backups go to <code>&lt;prefix&gt;/backups/&lt;name&gt;/</code>.</td></tr>
+    <tr><td><code>region</code></td><td class="wrap-ok">Bucket region. Needed by AWS for buckets outside <code>us-east-1</code>.</td></tr>
+    <tr><td><code>insecure</code></td><td class="wrap-ok">Plain HTTP instead of HTTPS. Only for in-cluster test endpoints.</td></tr>
+    <tr><td><code>skipTLSVerify</code></td><td class="wrap-ok">Accept any TLS certificate, for self-signed MinIO or Ceph. Prefer a proper CA.</td></tr>
+    <tr><td><code>credentials</code></td><td class="wrap-ok">Secret with the access key. When omitted, the AWS credential chain is used: environment variables, then the instance or pod IAM role.</td></tr>
+  </tbody>
+</table></div>
+<p>The access key needs <code>s3:ListBucket</code>, <code>s3:GetObject</code>, <code>s3:PutObject</code> and
+  <code>s3:DeleteObject</code> on the bucket, plus <code>s3:AbortMultipartUpload</code> to clean up failed uploads.
+  A <code>ReadOnly</code> location only needs list and get.</p>
+
+<h2 id="validation">Validation<a class="anchor" href="#validation" aria-label="Link to this section">#</a></h2>
+<p>Every <code>syncPeriod</code> (default 1 minute, at least 10 seconds) the operator checks that the bucket exists and
+  is reachable, and sets the phase:</p>
+<pre>kubectl get bsl -A
+NAMESPACE   NAME      PHASE       ENDPOINT                        BUCKET       ACCESS      LAST VALIDATED
+db          default   Available   s3.eu-central-1.amazonaws.com   my-backups   ReadWrite   12s</pre>
+<p>The phase is informational. Backups and restores still start while a location is <code>Unavailable</code>, and
+  the agent's own <a href="reliability.html">retries</a> ride out short outages. If the bucket stays unreachable,
+  they fail with the S3 error. The reason for <code>Unavailable</code> is in <code>status.message</code> and in an
+  <code>Unavailable</code> event.</p>
+
+<h2 id="access-modes">Access modes<a class="anchor" href="#access-modes" aria-label="Link to this section">#</a></h2>
+<ul>
+  <li><strong><code>ReadWrite</code></strong> (default): backups, restores, TTL garbage collection and data deletion.</li>
+  <li><strong><code>ReadOnly</code></strong>: restores only. New Backups fail with <code>StorageLocationReadOnly</code>,
+    expired backups are not deleted, and deleting a Backup keeps its data. Use it to attach another cluster's
+    backups, for example in a <a href="disaster-recovery.html">disaster recovery</a> drill, without any risk of
+    changing them.</li>
+</ul>
+
+<h2 id="sync">Sync from storage<a class="anchor" href="#sync" aria-label="Link to this section">#</a></h2>
+<p>After each successful check, the operator lists <code>&lt;prefix&gt;/backups/</code> and creates a
+  <code>Backup</code> for every completed backup it finds that isn't in the namespace yet. That means it has a
+  <code>planb-backup.json</code> with phase <code>Completed</code>. Imported Backups:</p>
+<ul>
+  <li>keep their name, labels, spec and status from the metadata file;</li>
+  <li>point at the importing location (<code>spec.storageLocation</code> and the
+    <code>planb.sina-devel.github.io/storage-location</code> label);</li>
+  <li>carry the annotation <code>planb.sina-devel.github.io/synced-from-storage: "true"</code>;</li>
+  <li>are skipped if already expired, unless the location is <code>ReadOnly</code>.</li>
+</ul>
+<p>Sync never overwrites a Backup that was created in the cluster. Set <code>syncPeriod: 0s</code> to switch it off.
+  Validation then runs every minute.</p>
+<div class="callout warn"><strong>Deleting an imported Backup deletes the data</strong>
+  <p>On a <code>ReadWrite</code> location, an imported Backup is a normal Backup: deleting it, or letting its TTL
+    expire, removes the data from the bucket. That affects every cluster sharing the bucket. Attach shared buckets
+    as <code>ReadOnly</code> unless this cluster should own the backups.</p></div>
+
+<h2 id="deleting">Deleting a location<a class="anchor" href="#deleting" aria-label="Link to this section">#</a></h2>
+<p>Deleting a BackupStorageLocation never deletes data. While a location is missing or being deleted, deleting its
+  Backups keeps their data too.</p>
+<nav class="pager" aria-label="Previous and next page">
+<a href="concepts.html"><small>Previous</small>Concepts</a>
+<a class="next" href="postgres.html"><small>Next</small>PostgreSQL</a>
+</nav>
+</article></main>
+</div>
+<footer>
+  <div class="wrap">
+    <span>planb: backup and restore for Kubernetes data services</span>
+    <a href="https://github.com/sina-devel/planb/edit/main/docs/storage-locations.html">Edit this page on GitHub</a>
+  </div>
+</footer>
+<script>
+  // On narrow screens the menu starts collapsed.
+  if (window.matchMedia("(max-width: 860px)").matches) document.querySelector("aside.side details").removeAttribute("open");
+</script>
+</body>
+</html>

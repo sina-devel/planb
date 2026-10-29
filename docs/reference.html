@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>API reference · planb</title>
+<meta name="description" content="Every field of every planb resource. API version planb.sina-devel.github.io/v1alpha1; all resources are namespaced.">
+<link rel="icon" href="assets/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="assets/site.css">
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <a class="logo" href="./">plan<span>b</span></a>
+    <nav>
+      <a href="getting-started.html" class="active">Docs</a>
+      <a class="hide-sm" href="reference.html">API</a>
+      <a href="https://github.com/sina-devel/planb">GitHub</a>
+    </nav>
+  </div>
+</header>
+<div class="wrap docs">
+<aside class="side"><details open><summary>Documentation menu</summary>
+<h4>Start</h4><ul>
+<li><a href="getting-started.html">Getting started</a></li>
+<li><a href="concepts.html">Concepts</a></li>
+</ul>
+<h4>Guides</h4><ul>
+<li><a href="storage-locations.html">Storage locations</a></li>
+<li><a href="postgres.html">PostgreSQL</a></li>
+<li><a href="buckets.html">S3 buckets</a></li>
+<li><a href="schedules.html">Schedules and retention</a></li>
+<li><a href="notifications.html">Notifications</a></li>
+<li><a href="reliability.html">Retries and reliability</a></li>
+<li><a href="disaster-recovery.html">Disaster recovery</a></li>
+<li><a href="ui.html">Web UI</a></li>
+</ul>
+<h4>Operate</h4><ul>
+<li><a href="installation.html">Installation and Helm</a></li>
+<li><a href="upgrading.html">Upgrading</a></li>
+<li><a href="troubleshooting.html">Troubleshooting</a></li>
+</ul>
+<h4>Reference</h4><ul>
+<li><a href="reference.html" aria-current="page">API reference</a></li>
+<li><a href="development.html">Development</a></li>
+</ul></details></aside>
+<main><article>
+<h1>API reference</h1>
+<p class="lead">Every field of every planb resource. API version planb.sina-devel.github.io/v1alpha1; all resources are namespaced.</p>
+<p>The CRDs carry the same descriptions, so <code>kubectl explain backup.spec.postgres</code> works too.
+  Defaults are applied by the API server.</p>
+
+<h2 id="backupstoragelocation">BackupStorageLocation<a class="anchor" href="#backupstoragelocation" aria-label="Link to this section">#</a></h2>
+<p>Short name <code>bsl</code>. An S3-compatible bucket that stores backups.</p>
+<div class="table-wrap"><table>
+  <thead><tr><th>Field</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td><code>spec.s3</code></td><td><a href="#s3spec">S3Spec</a></td><td></td><td class="wrap-ok">The bucket. Required.</td></tr>
+    <tr><td><code>spec.accessMode</code></td><td>string</td><td><code>ReadWrite</code></td><td class="wrap-ok"><code>ReadWrite</code> or <code>ReadOnly</code> (restores only, no deletion).</td></tr>
+    <tr><td><code>spec.syncPeriod</code></td><td>duration</td><td><code>1m</code></td><td class="wrap-ok">How often to validate and sync from storage, at least 10s. <code>0s</code> disables sync.</td></tr>
+    <tr><td><code>status.phase</code></td><td>string</td><td></td><td class="wrap-ok"><code>Available</code> or <code>Unavailable</code>.</td></tr>
+    <tr><td><code>status.message</code></td><td>string</td><td></td><td class="wrap-ok">Why it's unavailable, or a sync error.</td></tr>
+    <tr><td><code>status.lastValidationTime</code>, <code>status.lastSyncTime</code></td><td>time</td><td></td><td class="wrap-ok"></td></tr>
+  </tbody>
+</table></div>
+
+<h2 id="backup">Backup<a class="anchor" href="#backup" aria-label="Link to this section">#</a></h2>
+<p>Exactly one of <code>postgres</code> and <code>bucket</code> must be set.</p>
+<div class="table-wrap"><table>
+  <thead><tr><th>Field</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td><code>spec.storageLocation</code></td><td>string</td><td></td><td class="wrap-ok">Name of a BackupStorageLocation in the same namespace. Required.</td></tr>
+    <tr><td><code>spec.ttl</code></td><td>duration</td><td>operator default (<code>720h</code>)</td><td class="wrap-ok">Delete the backup and its data this long after completion. <code>0s</code> keeps it.</td></tr>
+    <tr><td><code>spec.postgres</code></td><td><a href="#postgresconnection">PostgresConnection</a> +</td><td></td><td class="wrap-ok">Connection fields, plus:</td></tr>
+    <tr><td><code>spec.postgres.databases</code></td><td>[]string</td><td>all, via <code>pg_dumpall</code></td><td class="wrap-ok">Databases to dump one by one with <code>pg_dump --format=custom</code>.</td></tr>
+    <tr><td><code>spec.postgres.includeGlobals</code></td><td>bool</td><td><code>false</code></td><td class="wrap-ok">Also dump roles and tablespaces (with <code>databases</code>).</td></tr>
+    <tr><td><code>spec.postgres.extraArgs</code></td><td>[]string</td><td></td><td class="wrap-ok">Appended to <code>pg_dump</code> / <code>pg_dumpall</code>.</td></tr>
+    <tr><td><code>spec.bucket</code></td><td><a href="#s3spec">S3Spec</a></td><td></td><td class="wrap-ok">The bucket and prefix to copy.</td></tr>
+    <tr><td><code>spec.job</code></td><td><a href="#joboptions">JobOptions</a></td><td></td><td class="wrap-ok">Settings for the backup Job.</td></tr>
+    <tr><td><code>status.phase</code></td><td>string</td><td></td><td class="wrap-ok"><code>New</code>, <code>InProgress</code>, <code>Completed</code>, <code>Failed</code>, <code>Deleting</code>.</td></tr>
+    <tr><td><code>status.message</code></td><td>string</td><td></td><td class="wrap-ok">Error of a failed backup.</td></tr>
+    <tr><td><code>status.location</code></td><td>string</td><td></td><td class="wrap-ok"><code>s3://bucket/prefix/backups/name/</code></td></tr>
+    <tr><td><code>status.startTimestamp</code>, <code>.completionTimestamp</code>, <code>.expiration</code></td><td>time</td><td></td><td class="wrap-ok"></td></tr>
+    <tr><td><code>status.sizeBytes</code>, <code>status.items</code></td><td>int</td><td></td><td class="wrap-ok">Bytes uploaded; dump files or objects stored.</td></tr>
+    <tr><td><code>status.files</code></td><td>[]string</td><td></td><td class="wrap-ok">Dump files, relative to the location (PostgreSQL only).</td></tr>
+    <tr><td><code>status.jobName</code></td><td>string</td><td></td><td class="wrap-ok">The Job that ran it.</td></tr>
+  </tbody>
+</table></div>
+<p>Annotations: <code>planb.sina-devel.github.io/retain-data: "true"</code> keeps the data on deletion;
+  <code>…/synced-from-storage</code> marks imported backups; <code>…/notified</code> lists Notifiers that sent a
+  message. Labels: <code>…/storage-location</code>, <code>…/schedule</code>.</p>
+
+<h2 id="schedule">Schedule<a class="anchor" href="#schedule" aria-label="Link to this section">#</a></h2>
+<div class="table-wrap"><table>
+  <thead><tr><th>Field</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td><code>spec.schedule</code></td><td>string</td><td></td><td class="wrap-ok">5-field cron, optionally prefixed with <code>CRON_TZ=Zone</code>, or <code>@daily</code>, <code>@every 6h</code>…</td></tr>
+    <tr><td><code>spec.template</code></td><td><a href="#backup">Backup spec</a></td><td></td><td class="wrap-ok">Spec of the Backups to create.</td></tr>
+    <tr><td><code>spec.keepLast</code></td><td>int</td><td><code>0</code></td><td class="wrap-ok">Keep only the newest N completed backups. <code>0</code>: TTL only.</td></tr>
+    <tr><td><code>spec.paused</code></td><td>bool</td><td><code>false</code></td><td class="wrap-ok">Stop creating backups.</td></tr>
+    <tr><td><code>spec.skipIfRunning</code></td><td>bool</td><td><code>true</code></td><td class="wrap-ok">Skip a run while the previous backup is unfinished.</td></tr>
+    <tr><td><code>status.phase</code></td><td>string</td><td></td><td class="wrap-ok"><code>Enabled</code>, <code>Paused</code>, <code>FailedValidation</code>.</td></tr>
+    <tr><td><code>status.lastBackup</code>, <code>.lastScheduleTime</code>, <code>.nextScheduleTime</code>, <code>.message</code></td><td></td><td></td><td class="wrap-ok"></td></tr>
+  </tbody>
+</table></div>
+
+<h2 id="restore">Restore<a class="anchor" href="#restore" aria-label="Link to this section">#</a></h2>
+<div class="table-wrap"><table>
+  <thead><tr><th>Field</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td><code>spec.backupName</code></td><td>string</td><td></td><td class="wrap-ok">A Backup in the same namespace. Required.</td></tr>
+    <tr><td><code>spec.postgres.target</code></td><td><a href="#postgresconnection">PostgresConnection</a></td><td>the backup's source</td><td class="wrap-ok">Server to restore to.</td></tr>
+    <tr><td><code>spec.postgres.databases</code></td><td>[]string</td><td>all</td><td class="wrap-ok">Databases to restore.</td></tr>
+    <tr><td><code>spec.postgres.databaseMapping</code></td><td>map</td><td></td><td class="wrap-ok"><code>{source: target}</code> names.</td></tr>
+    <tr><td><code>spec.postgres.createDatabase</code></td><td>bool</td><td><code>true</code></td><td class="wrap-ok">Create missing target databases.</td></tr>
+    <tr><td><code>spec.postgres.clean</code></td><td>bool</td><td><code>false</code></td><td class="wrap-ok"><code>pg_restore --clean --if-exists</code>.</td></tr>
+    <tr><td><code>spec.postgres.restoreGlobals</code></td><td>bool</td><td><code>false</code></td><td class="wrap-ok">Replay roles and tablespaces first.</td></tr>
+    <tr><td><code>spec.postgres.extraArgs</code></td><td>[]string</td><td></td><td class="wrap-ok">Appended to <code>pg_restore</code> / <code>psql</code>.</td></tr>
+    <tr><td><code>spec.bucket.target</code></td><td><a href="#s3spec">S3Spec</a></td><td>the backup's source</td><td class="wrap-ok">Bucket and prefix to restore into.</td></tr>
+    <tr><td><code>spec.bucket.overwrite</code></td><td>bool</td><td><code>true</code></td><td class="wrap-ok">Replace existing objects; <code>false</code> skips them.</td></tr>
+    <tr><td><code>spec.bucket.prune</code></td><td>bool</td><td><code>false</code></td><td class="wrap-ok">Delete target objects not in the backup, after copying.</td></tr>
+    <tr><td><code>spec.job</code></td><td><a href="#joboptions">JobOptions</a></td><td></td><td class="wrap-ok"></td></tr>
+    <tr><td><code>status.phase</code></td><td>string</td><td></td><td class="wrap-ok"><code>New</code>, <code>InProgress</code>, <code>Completed</code>, <code>Failed</code>, <code>FailedValidation</code>.</td></tr>
+    <tr><td><code>status.sizeBytes</code>, <code>.items</code>, <code>.deletedItems</code></td><td>int</td><td></td><td class="wrap-ok">Bytes and items restored; objects removed by prune.</td></tr>
+    <tr><td><code>status.message</code>, <code>.startTimestamp</code>, <code>.completionTimestamp</code>, <code>.jobName</code></td><td></td><td></td><td class="wrap-ok"></td></tr>
+  </tbody>
+</table></div>
+
+<h2 id="notifier">Notifier<a class="anchor" href="#notifier" aria-label="Link to this section">#</a></h2>
+<p>Exactly one of <code>webhook</code>, <code>slack</code>, <code>telegram</code> and <code>email</code> must be set.
+  <a href="#secretkeyref">SecretKeyRef</a> is <code>{name, key}</code>.</p>
+<div class="table-wrap"><table>
+  <thead><tr><th>Field</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td><code>spec.events</code></td><td>[]string</td><td><code>[BackupFailed, RestoreFailed]</code></td><td class="wrap-ok">Any of <code>BackupCompleted</code>, <code>BackupFailed</code>, <code>RestoreCompleted</code>, <code>RestoreFailed</code>.</td></tr>
+    <tr><td><code>spec.selector</code></td><td>LabelSelector</td><td>everything</td><td class="wrap-ok">Only Backups/Restores with matching labels.</td></tr>
+    <tr><td><code>spec.suspend</code></td><td>bool</td><td><code>false</code></td><td class="wrap-ok">Stop sending.</td></tr>
+    <tr><td><code>spec.webhook.url</code> | <code>.urlSecret</code></td><td>string | SecretKeyRef</td><td></td><td class="wrap-ok">Where to POST the JSON message.</td></tr>
+    <tr><td><code>spec.webhook.headers</code></td><td>map</td><td></td><td class="wrap-ok">Extra request headers.</td></tr>
+    <tr><td><code>spec.slack.webhookURL</code></td><td>SecretKeyRef</td><td></td><td class="wrap-ok">Incoming webhook URL.</td></tr>
+    <tr><td><code>spec.slack.channel</code></td><td>string</td><td></td><td class="wrap-ok">Channel override.</td></tr>
+    <tr><td><code>spec.telegram.botToken</code></td><td>SecretKeyRef</td><td></td><td class="wrap-ok"></td></tr>
+    <tr><td><code>spec.telegram.chatID</code></td><td>string</td><td></td><td class="wrap-ok">User, group or <code>@channel</code>.</td></tr>
+    <tr><td><code>spec.telegram.apiURL</code></td><td>string</td><td><code>https://api.telegram.org</code></td><td class="wrap-ok"></td></tr>
+    <tr><td><code>spec.email.host</code>, <code>.port</code></td><td>string, int</td><td>port <code>587</code></td><td class="wrap-ok">SMTP server.</td></tr>
+    <tr><td><code>spec.email.tls</code></td><td>string</td><td><code>StartTLS</code></td><td class="wrap-ok"><code>StartTLS</code>, <code>TLS</code> or <code>None</code>.</td></tr>
+    <tr><td><code>spec.email.skipTLSVerify</code></td><td>bool</td><td><code>false</code></td><td class="wrap-ok"></td></tr>
+    <tr><td><code>spec.email.from</code>, <code>.to</code></td><td>string, []string</td><td></td><td class="wrap-ok"></td></tr>
+    <tr><td><code>spec.email.credentials</code></td><td>{name, usernameKey, passwordKey}</td><td>keys <code>username</code>/<code>password</code></td><td class="wrap-ok">SMTP AUTH PLAIN.</td></tr>
+    <tr><td><code>status.type</code>, <code>.phase</code>, <code>.message</code></td><td></td><td></td><td class="wrap-ok">Channel, <code>Ready</code>/<code>Failed</code>, last error.</td></tr>
+    <tr><td><code>status.lastSentTime</code>, <code>.lastFailureTime</code>, <code>.lastTestRequest</code></td><td></td><td></td><td class="wrap-ok"></td></tr>
+  </tbody>
+</table></div>
+<p>Annotation <code>planb.sina-devel.github.io/test</code>: change it to send a test message.</p>
+
+<h2 id="common-types">Common types<a class="anchor" href="#common-types" aria-label="Link to this section">#</a></h2>
+<h3 id="s3spec">S3Spec<a class="anchor" href="#s3spec" aria-label="Link to this section">#</a></h3>
+<div class="table-wrap"><table>
+  <thead><tr><th>Field</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td><code>endpoint</code></td><td>string</td><td></td><td class="wrap-ok"><code>host[:port]</code>, no scheme. Required.</td></tr>
+    <tr><td><code>bucket</code></td><td>string</td><td></td><td class="wrap-ok">Required.</td></tr>
+    <tr><td><code>prefix</code></td><td>string</td><td></td><td class="wrap-ok">Folder inside the bucket.</td></tr>
+    <tr><td><code>region</code></td><td>string</td><td></td><td class="wrap-ok"></td></tr>
+    <tr><td><code>insecure</code></td><td>bool</td><td><code>false</code></td><td class="wrap-ok">Plain HTTP.</td></tr>
+    <tr><td><code>skipTLSVerify</code></td><td>bool</td><td><code>false</code></td><td class="wrap-ok"></td></tr>
+    <tr><td><code>credentials.name</code></td><td>string</td><td></td><td class="wrap-ok">Secret name. Omit <code>credentials</code> for IAM.</td></tr>
+    <tr><td><code>credentials.accessKeyIdKey</code></td><td>string</td><td><code>accessKey</code></td><td class="wrap-ok"></td></tr>
+    <tr><td><code>credentials.secretAccessKeyKey</code></td><td>string</td><td><code>secretKey</code></td><td class="wrap-ok"></td></tr>
+  </tbody>
+</table></div>
+<h3 id="postgresconnection">PostgresConnection<a class="anchor" href="#postgresconnection" aria-label="Link to this section">#</a></h3>
+<div class="table-wrap"><table>
+  <thead><tr><th>Field</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td><code>host</code></td><td>string</td><td></td><td class="wrap-ok">Required.</td></tr>
+    <tr><td><code>port</code></td><td>int</td><td><code>5432</code></td><td class="wrap-ok"></td></tr>
+    <tr><td><code>sslMode</code></td><td>string</td><td><code>prefer</code></td><td class="wrap-ok"><code>disable</code>, <code>allow</code>, <code>prefer</code>, <code>require</code>, <code>verify-ca</code>, <code>verify-full</code>.</td></tr>
+    <tr><td><code>credentials.name</code></td><td>string</td><td></td><td class="wrap-ok">Secret name. Required.</td></tr>
+    <tr><td><code>credentials.usernameKey</code>, <code>.passwordKey</code></td><td>string</td><td><code>username</code>, <code>password</code></td><td class="wrap-ok"></td></tr>
+  </tbody>
+</table></div>
+<h3 id="joboptions">JobOptions<a class="anchor" href="#joboptions" aria-label="Link to this section">#</a></h3>
+<div class="table-wrap"><table>
+  <thead><tr><th>Field</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td><code>image</code></td><td>string</td><td>operator's agent image</td><td class="wrap-ok">Must contain <code>planb</code> and the PostgreSQL client.</td></tr>
+    <tr><td><code>resources</code></td><td>ResourceRequirements</td><td></td><td class="wrap-ok"></td></tr>
+    <tr><td><code>nodeSelector</code>, <code>tolerations</code></td><td></td><td></td><td class="wrap-ok"></td></tr>
+    <tr><td><code>serviceAccountName</code></td><td>string</td><td>namespace default</td><td class="wrap-ok">For IAM roles.</td></tr>
+    <tr><td><code>activeDeadlineSeconds</code></td><td>int</td><td></td><td class="wrap-ok">Hard time limit for the Job.</td></tr>
+    <tr><td><code>backoffLimit</code></td><td>int</td><td><code>1</code></td><td class="wrap-ok">Pod restarts after a failure.</td></tr>
+    <tr><td><code>retry.attempts</code></td><td>int</td><td><code>5</code></td><td class="wrap-ok">Tries per operation, 1–50.</td></tr>
+    <tr><td><code>retry.initialBackoff</code></td><td>duration</td><td><code>2s</code></td><td class="wrap-ok">First wait, doubled each time.</td></tr>
+    <tr><td><code>retry.maxBackoff</code></td><td>duration</td><td><code>1m</code></td><td class="wrap-ok">Longest wait.</td></tr>
+  </tbody>
+</table></div>
+<h3 id="secretkeyref">SecretKeyRef<a class="anchor" href="#secretkeyref" aria-label="Link to this section">#</a></h3>
+<p><code>{name: string, key: string}</code>: one key of a Secret in the same namespace.</p>
+<nav class="pager" aria-label="Previous and next page">
+<a href="troubleshooting.html"><small>Previous</small>Troubleshooting</a>
+<a class="next" href="development.html"><small>Next</small>Development</a>
+</nav>
+</article></main>
+</div>
+<footer>
+  <div class="wrap">
+    <span>planb: backup and restore for Kubernetes data services</span>
+    <a href="https://github.com/sina-devel/planb/edit/main/docs/reference.html">Edit this page on GitHub</a>
+  </div>
+</footer>
+<script>
+  // On narrow screens the menu starts collapsed.
+  if (window.matchMedia("(max-width: 860px)").matches) document.querySelector("aside.side details").removeAttribute("open");
+</script>
+</body>
+</html>

@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Getting started · planb</title>
+<meta name="description" content="Install planb, point it at a bucket, back up a PostgreSQL database and restore it under a new name. This takes about ten minutes.">
+<link rel="icon" href="assets/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="assets/site.css">
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <a class="logo" href="./">plan<span>b</span></a>
+    <nav>
+      <a href="getting-started.html" class="active">Docs</a>
+      <a class="hide-sm" href="reference.html">API</a>
+      <a href="https://github.com/sina-devel/planb">GitHub</a>
+    </nav>
+  </div>
+</header>
+<div class="wrap docs">
+<aside class="side"><details open><summary>Documentation menu</summary>
+<h4>Start</h4><ul>
+<li><a href="getting-started.html" aria-current="page">Getting started</a></li>
+<li><a href="concepts.html">Concepts</a></li>
+</ul>
+<h4>Guides</h4><ul>
+<li><a href="storage-locations.html">Storage locations</a></li>
+<li><a href="postgres.html">PostgreSQL</a></li>
+<li><a href="buckets.html">S3 buckets</a></li>
+<li><a href="schedules.html">Schedules and retention</a></li>
+<li><a href="notifications.html">Notifications</a></li>
+<li><a href="reliability.html">Retries and reliability</a></li>
+<li><a href="disaster-recovery.html">Disaster recovery</a></li>
+<li><a href="ui.html">Web UI</a></li>
+</ul>
+<h4>Operate</h4><ul>
+<li><a href="installation.html">Installation and Helm</a></li>
+<li><a href="upgrading.html">Upgrading</a></li>
+<li><a href="troubleshooting.html">Troubleshooting</a></li>
+</ul>
+<h4>Reference</h4><ul>
+<li><a href="reference.html">API reference</a></li>
+<li><a href="development.html">Development</a></li>
+</ul></details></aside>
+<main><article>
+<h1>Getting started</h1>
+<p class="lead">Install planb, point it at a bucket, back up a PostgreSQL database and restore it under a new name. This takes about ten minutes.</p>
+<h2 id="prerequisites">Prerequisites<a class="anchor" href="#prerequisites" aria-label="Link to this section">#</a></h2>
+<ul>
+  <li>A Kubernetes cluster, version 1.30 or newer. k3s, kind, EKS, GKE and AKS all work.</li>
+  <li><code>kubectl</code> and <a href="https://helm.sh">Helm</a> 3 or newer.</li>
+  <li>An S3-compatible bucket for the backups, plus an access key that can list, read, write and delete objects in it.
+    AWS S3, MinIO, Ceph RGW, Cloudflare R2, Wasabi and other S3-compatible stores work.</li>
+  <li>Something to back up: a PostgreSQL server reachable from the cluster, or another S3 bucket.</li>
+</ul>
+<p>If you only want to try planb, skip the bucket and the database: <a href="#try-it-locally">Try it locally</a>
+  deploys throwaway ones into the cluster.</p>
+
+<h2 id="install">1. Install the operator<a class="anchor" href="#install" aria-label="Link to this section">#</a></h2>
+<p>The Helm chart is in the repository. It installs the CRDs, the operator and, optionally, the web UI.</p>
+<pre>git clone https://github.com/sina-devel/planb && cd planb
+helm upgrade --install planb charts/planb -n planb-system --create-namespace</pre>
+<p>Check that the operator is running:</p>
+<pre>kubectl get pods -n planb-system
+kubectl get crd | grep planb.sina-devel.github.io</pre>
+<p>To add the web UI, see <a href="ui.html">Web UI</a>. For every chart setting, see
+  <a href="installation.html">Installation and Helm</a>.</p>
+
+<h2 id="credentials">2. Store the credentials<a class="anchor" href="#credentials" aria-label="Link to this section">#</a></h2>
+<p>planb reads credentials only from Secrets in the namespace of the resources that use them. In this guide that
+  namespace is <code>db</code>.</p>
+<pre>kubectl create namespace db
+
+# S3 access key for the backup bucket
+kubectl create secret generic backup-bucket -n db \
+  --from-literal=accessKey=AKIA... --from-literal=secretKey=...
+
+# PostgreSQL user that may run pg_dump on the databases you back up
+kubectl create secret generic postgres-credentials -n db \
+  --from-literal=username=postgres --from-literal=password=...</pre>
+
+<h2 id="storage-location">3. Create a storage location<a class="anchor" href="#storage-location" aria-label="Link to this section">#</a></h2>
+<p>A <code>BackupStorageLocation</code> is the bucket backups are written to. planb checks every minute that it can
+  reach it.</p>
+<pre>apiVersion: planb.sina-devel.github.io/v1alpha1
+kind: BackupStorageLocation
+metadata:
+  name: default
+  namespace: db
+spec:
+  s3:
+    endpoint: s3.eu-central-1.amazonaws.com   # host[:port], no scheme
+    region: eu-central-1
+    bucket: my-backups
+    prefix: planb                             # optional folder inside the bucket
+    credentials: { name: backup-bucket }</pre>
+<pre>kubectl apply -f storage-location.yaml
+kubectl get bsl -n db        # PHASE should become Available</pre>
+<p>If the phase is <code>Unavailable</code>, <code>kubectl describe bsl default -n db</code> shows why. Usually
+  it's a wrong endpoint, region or key.</p>
+
+<h2 id="backup">4. Back up a database<a class="anchor" href="#backup" aria-label="Link to this section">#</a></h2>
+<pre>apiVersion: planb.sina-devel.github.io/v1alpha1
+kind: Backup
+metadata:
+  name: app-manual-1
+  namespace: db
+spec:
+  storageLocation: default
+  postgres:
+    host: postgres.db.svc
+    credentials: { name: postgres-credentials }
+    databases: [app]          # one pg_dump file per database
+    includeGlobals: true      # also roles and tablespaces</pre>
+<pre>kubectl apply -f backup.yaml
+kubectl get backups -n db -w</pre>
+<p>The Backup moves from <code>New</code> to <code>InProgress</code> to <code>Completed</code>. The work runs in a Job
+  called <code>planb-backup-app-manual-1</code>, whose logs show each step:</p>
+<pre>kubectl logs -n db job/planb-backup-app-manual-1</pre>
+<p>The data now sits in the bucket under <code>planb/backups/app-manual-1/</code>.</p>
+
+<h2 id="restore">5. Restore it<a class="anchor" href="#restore" aria-label="Link to this section">#</a></h2>
+<p>Restore the database next to the original, under a new name, so you can compare the two:</p>
+<pre>apiVersion: planb.sina-devel.github.io/v1alpha1
+kind: Restore
+metadata:
+  name: app-restore-test
+  namespace: db
+spec:
+  backupName: app-manual-1
+  postgres:
+    databaseMapping: { app: app_restored }</pre>
+<pre>kubectl apply -f restore.yaml
+kubectl get restores -n db -w</pre>
+<p><code>createDatabase</code> is on by default, so planb creates <code>app_restored</code> before restoring into it.</p>
+
+<h2 id="schedule">6. Back up every night<a class="anchor" href="#schedule" aria-label="Link to this section">#</a></h2>
+<pre>apiVersion: planb.sina-devel.github.io/v1alpha1
+kind: Schedule
+metadata:
+  name: app-nightly
+  namespace: db
+spec:
+  schedule: "CRON_TZ=Europe/Berlin 0 3 * * *"
+  keepLast: 7                # keep a week of backups
+  template:                  # a Backup spec
+    storageLocation: default
+    ttl: 720h
+    postgres:
+      host: postgres.db.svc
+      credentials: { name: postgres-credentials }
+      databases: [app]</pre>
+<p>To hear about failures, add a <a href="notifications.html">Notifier</a>.</p>
+
+<h2 id="try-it-locally">Try it locally<a class="anchor" href="#try-it-locally" aria-label="Link to this section">#</a></h2>
+<p><code>hack/demo/</code> deploys a throwaway PostgreSQL with a seeded <code>app</code> database (1,000 rows), an
+  S3 endpoint served by <code>rclone serve s3</code>, and a storage location pointing at it. Everything lives in the
+  <code>planb-demo</code> namespace:</p>
+<pre>kubectl apply -f hack/demo/infra.yaml
+kubectl wait -n planb-demo --for=condition=Available deploy --all
+kubectl get bsl -n planb-demo -w              # wait for Available
+kubectl apply -f hack/demo/backup.yaml        # a database and a bucket backup
+kubectl get backups -n planb-demo -w
+kubectl apply -f hack/demo/restore.yaml       # restore both next to the originals
+
+kubectl exec -n planb-demo deploy/postgres -- \
+  psql -U postgres -d app_restored -c 'select count(*) from customers'
+
+kubectl delete ns planb-demo                  # clean up</pre>
+<div class="callout"><strong>No access to Docker Hub?</strong>
+  <p>Push <code>postgres:18-alpine</code> and <code>rclone/rclone:1.75</code> to a registry the cluster can reach,
+    then rewrite the images on the fly:
+    <code>sed 's#image: #image: localhost:5000/#' hack/demo/infra.yaml | kubectl apply -f -</code>.</p></div>
+
+<h2 id="next">Next steps<a class="anchor" href="#next" aria-label="Link to this section">#</a></h2>
+<ul>
+  <li><a href="concepts.html">Concepts</a> explains what happens behind each resource.</li>
+  <li><a href="postgres.html">PostgreSQL</a> and <a href="buckets.html">S3 buckets</a> cover every backup and
+    restore option.</li>
+  <li><a href="disaster-recovery.html">Disaster recovery</a> shows how to restore into a new cluster.</li>
+</ul>
+<nav class="pager" aria-label="Previous and next page">
+<a class="next" href="concepts.html"><small>Next</small>Concepts</a>
+</nav>
+</article></main>
+</div>
+<footer>
+  <div class="wrap">
+    <span>planb: backup and restore for Kubernetes data services</span>
+    <a href="https://github.com/sina-devel/planb/edit/main/docs/getting-started.html">Edit this page on GitHub</a>
+  </div>
+</footer>
+<script>
+  // On narrow screens the menu starts collapsed.
+  if (window.matchMedia("(max-width: 860px)").matches) document.querySelector("aside.side details").removeAttribute("open");
+</script>
+</body>
+</html>

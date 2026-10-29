@@ -8,6 +8,10 @@ Kubernetes resources and volumes. planb backs up **data services**:
 
 Backups go to any S3-compatible object store (AWS S3, MinIO, Ceph RGW, ...). There is also an optional web UI.
 
+**Documentation: https://sina-devel.github.io/planb/**. It has a getting-started guide, a page per feature,
+disaster recovery, upgrading (including the 0.3.0 move from `planb.io` to `planb.sina-devel.github.io`),
+troubleshooting and a full API reference. The site's source is in [`docs/`](docs/).
+
 ## Concepts
 
 | Kind | Velero equivalent | Purpose |
@@ -43,7 +47,7 @@ Backup CR ──> operator ──> Job (planb agent) ──stream──> s3://bu
 - **TTL**: `spec.ttl` (default `720h`, set by `--default-backup-ttl`). When it expires, the Backup *and its data* are
   deleted.
 - **Deleting a Backup deletes its data.** A finalizer handles this. Data is **kept** when:
-  - the Backup has the annotation `planb.io/retain-data: "true"`
+  - the Backup has the annotation `planb.sina-devel.github.io/retain-data: "true"`
   - the namespace is being deleted (protects against an accidental `kubectl delete ns`)
   - the storage location is `ReadOnly`, missing, or being deleted
 - **Sync from storage**: every `syncPeriod`, each storage location imports completed backups it finds in the
@@ -110,9 +114,18 @@ kubectl logs -n db job/planb-backup-app-manual-1     # agent logs
 
 ### Buckets
 
-A bucket backup copies objects under `spec.bucket.prefix` into `<backup>/bucket/`, keeping relative keys. A restore
-copies them back to the original bucket and prefix, or to `spec.bucket.target`. With `overwrite: false`, existing
-keys are skipped.
+A bucket backup copies every object under `spec.bucket.prefix` into `<backup>/bucket/`, keeping relative keys. Each
+backup is a full, self-contained copy, not an incremental one. Only object data and Content-Type are kept: user
+metadata, tags, ACLs and older versions are not. When the source is the storage location's own bucket, planb's
+backups are left out.
+
+A restore copies the objects back to the original bucket and prefix, or to `spec.bucket.target`:
+
+- `overwrite: false` skips keys that already exist.
+- `prune: true` then deletes objects under the target prefix that are not in the backup, so the target matches the
+  backup exactly. Pruning starts only after every object was copied, and never touches planb's backups when the
+  target is the storage location's bucket. The number of deleted objects is in `status.deletedItems`. Without
+  `prune`, a restore only adds and replaces objects.
 
 ### Notifications
 
@@ -128,13 +141,13 @@ A `Notifier` sends a message when Backups or Restores in its namespace finish. S
 
 - `events`: any of `BackupCompleted`, `BackupFailed`, `RestoreCompleted`, `RestoreFailed`. The default is failures
   only.
-- `selector`: limits notifications to matching labels, e.g. `matchLabels: {planb.io/schedule: nightly}`.
+- `selector`: limits notifications to matching labels, e.g. `matchLabels: {planb.sina-devel.github.io/schedule: nightly}`.
 - `suspend: true` pauses a Notifier.
-- Delivery is at least once. Each Backup or Restore lists the Notifiers that were told in its `planb.io/notified`
+- Delivery is at least once. Each Backup or Restore lists the Notifiers that were told in its `planb.sina-devel.github.io/notified`
   annotation, and failed deliveries are retried every minute for an hour.
 - Backups that finished before the Notifier was created, or that were imported from storage, are never notified.
-- To send a test message, use **Test** in the UI, or change the `planb.io/test` annotation:
-  `kubectl annotate notifier -n db telegram-ops planb.io/test="$(date +%s)" --overwrite`. The result shows in
+- To send a test message, use **Test** in the UI, or change the `planb.sina-devel.github.io/test` annotation:
+  `kubectl annotate notifier -n db telegram-ops planb.sina-devel.github.io/test="$(date +%s)" --overwrite`. The result shows in
   `kubectl get notifiers` and in the Notifier's events.
 - Set `manager.clusterName` in the chart to show which cluster sent a message. If a channel is reachable only
   through a proxy, set `HTTPS_PROXY` and a `NO_PROXY` that covers the cluster in `manager.extraEnv`.
@@ -142,9 +155,26 @@ A `Notifier` sends a message when Backups or Restores in its namespace finish. S
 ### Job tuning
 
 `spec.job` on a Backup, a Schedule template, or a Restore accepts `resources`, `nodeSelector`, `tolerations`,
-`serviceAccountName`, `activeDeadlineSeconds`, `backoffLimit` and `image`. Set `PLANB_PART_SIZE_MB` in the image
+`serviceAccountName`, `activeDeadlineSeconds`, `backoffLimit`, `retry` and `image`. Set `PLANB_PART_SIZE_MB` in the image
 environment to raise the 64 MiB multipart chunk size. The largest streamed object is 10,000 × part size, so about
 640 GiB by default.
+
+### Retries
+
+Network errors, timeouts, S3 rate limits (`SlowDown`, HTTP 429/503) and 5xx responses, and dropped or refused
+PostgreSQL connections are retried inside the Job, at three levels:
+
+1. **Each S3 request** is retried up to 10 times by the S3 client, with backoff of up to 15s.
+2. **Each operation** is retried by `spec.job.retry` with exponential backoff and jitter:
+   `{attempts: 5, initialBackoff: 2s, maxBackoff: 1m}` by default. The retried operations are each object copy,
+   each listing, each dump file and each connection. Interrupted downloads resume from the last byte instead of
+   starting over, and fail if the object changed meanwhile. Interrupted listings continue after the last key.
+3. **The whole Job** is restarted up to `spec.job.backoffLimit` times (default 1).
+
+Some errors are never retried: wrong credentials, access denied, a missing bucket or database, and SQL errors.
+Restores replay data only once it is safe to do so. `psql`, and `pg_restore` without `clean`, are retried only when
+they could not connect, because a half-applied restore cannot simply be run again. `pg_restore` with `clean` is
+also retried after a connection drops part way, since it drops what the failed attempt created.
 
 ## Web UI (optional)
 
@@ -175,6 +205,9 @@ make tidy generate     # resolve deps, generate deepcopy + CRDs (needs network)
 make test              # unit tests
 make e2e               # agent end-to-end: throwaway PostgreSQL 18 + `rclone serve s3` (no docker)
 make install run       # CRDs into current cluster, run the operator locally
+
+# every feature against an installed planb in a real cluster (~10 minutes)
+KUBE_CONTEXT=k3s IMAGE_PREFIX=localhost:5000/ hack/e2e-k8s.sh
 ```
 
 ### Try it in a local cluster

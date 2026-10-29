@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>S3 buckets · planb</title>
+<meta name="description" content="Snapshot every object in a bucket, or under a prefix, into the backup location, then copy it back, optionally pruning the target so it matches the snapshot exactly.">
+<link rel="icon" href="assets/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="assets/site.css">
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <a class="logo" href="./">plan<span>b</span></a>
+    <nav>
+      <a href="getting-started.html" class="active">Docs</a>
+      <a class="hide-sm" href="reference.html">API</a>
+      <a href="https://github.com/sina-devel/planb">GitHub</a>
+    </nav>
+  </div>
+</header>
+<div class="wrap docs">
+<aside class="side"><details open><summary>Documentation menu</summary>
+<h4>Start</h4><ul>
+<li><a href="getting-started.html">Getting started</a></li>
+<li><a href="concepts.html">Concepts</a></li>
+</ul>
+<h4>Guides</h4><ul>
+<li><a href="storage-locations.html">Storage locations</a></li>
+<li><a href="postgres.html">PostgreSQL</a></li>
+<li><a href="buckets.html" aria-current="page">S3 buckets</a></li>
+<li><a href="schedules.html">Schedules and retention</a></li>
+<li><a href="notifications.html">Notifications</a></li>
+<li><a href="reliability.html">Retries and reliability</a></li>
+<li><a href="disaster-recovery.html">Disaster recovery</a></li>
+<li><a href="ui.html">Web UI</a></li>
+</ul>
+<h4>Operate</h4><ul>
+<li><a href="installation.html">Installation and Helm</a></li>
+<li><a href="upgrading.html">Upgrading</a></li>
+<li><a href="troubleshooting.html">Troubleshooting</a></li>
+</ul>
+<h4>Reference</h4><ul>
+<li><a href="reference.html">API reference</a></li>
+<li><a href="development.html">Development</a></li>
+</ul></details></aside>
+<main><article>
+<h1>S3 buckets</h1>
+<p class="lead">Snapshot every object in a bucket, or under a prefix, into the backup location, then copy it back, optionally pruning the target so it matches the snapshot exactly.</p>
+<h2 id="backup">Backup<a class="anchor" href="#backup" aria-label="Link to this section">#</a></h2>
+<pre>apiVersion: planb.sina-devel.github.io/v1alpha1
+kind: Backup
+metadata:
+  name: media-2026-10-29
+  namespace: db
+spec:
+  storageLocation: default
+  bucket:
+    endpoint: s3.eu-central-1.amazonaws.com
+    region: eu-central-1
+    bucket: media
+    prefix: uploads/              # optional: only objects under this prefix
+    credentials: { name: media-bucket }</pre>
+<p>The source takes the same fields as a <a href="storage-locations.html#s3">storage location</a>, so it can be on a
+  different provider, endpoint or account from the backup bucket. Objects are streamed straight from source to
+  destination, four at a time, with the keys relative to <code>prefix</code>:</p>
+<pre>s3://media/uploads/2026/a.jpg  →  s3://my-backups/planb/backups/media-2026-10-29/bucket/2026/a.jpg</pre>
+
+<h3 id="what-is-copied">What's copied<a class="anchor" href="#what-is-copied" aria-label="Link to this section">#</a></h3>
+<ul>
+  <li><strong>Every backup is a full copy.</strong> Backups aren't incremental and share nothing, so each one can be
+    restored or deleted on its own. Storage grows with <em>size × number of kept backups</em>. Use
+    <a href="schedules.html#keep-last"><code>keepLast</code></a> and TTLs to bound it, or a provider-side lifecycle
+    rule to move old backups to cheaper storage.</li>
+  <li>Object data and <code>Content-Type</code> are kept. User metadata, tags, ACLs, storage classes and older
+    object versions are not.</li>
+  <li>Folder marker objects (zero-byte keys ending in <code>/</code>) are skipped.</li>
+  <li>If the source is the storage location's own bucket, planb's <code>backups/</code> folder is left out, so
+    backups never contain earlier backups.</li>
+  <li>The copy isn't an atomic snapshot: objects changed while the backup runs may or may not be included. For a
+    point-in-time view, enable bucket versioning or pause writers.</li>
+</ul>
+
+<h2 id="restore">Restore<a class="anchor" href="#restore" aria-label="Link to this section">#</a></h2>
+<pre>apiVersion: planb.sina-devel.github.io/v1alpha1
+kind: Restore
+metadata:
+  name: media-restore
+  namespace: db
+spec:
+  backupName: media-2026-10-29
+  bucket:
+    target:                       # default: the original bucket and prefix
+      endpoint: s3.eu-central-1.amazonaws.com
+      region: eu-central-1
+      bucket: media-restored
+      prefix: ""
+      credentials: { name: media-bucket }
+    overwrite: true               # default
+    prune: false                  # default</pre>
+<p>A restore copies every object of the backup into the target prefix, keeping relative keys. What it does with
+  objects that are already there depends on two options:</p>
+<div class="table-wrap"><table>
+  <thead><tr><th>overwrite</th><th>prune</th><th>Result in the target</th></tr></thead>
+  <tbody>
+    <tr><td><code>true</code></td><td><code>false</code></td><td class="wrap-ok">Objects in the backup are written over existing ones. Other objects stay. <em>(default)</em></td></tr>
+    <tr><td><code>false</code></td><td><code>false</code></td><td class="wrap-ok">Only missing objects are added; existing keys are never touched. Good for "fill in what's lost".</td></tr>
+    <tr><td><code>true</code></td><td><code>true</code></td><td class="wrap-ok">The target prefix ends up exactly like the backup: every object restored, everything else under the prefix deleted.</td></tr>
+    <tr><td><code>false</code></td><td><code>true</code></td><td class="wrap-ok">Existing keys are kept as they are, and objects that aren't in the backup are deleted.</td></tr>
+  </tbody>
+</table></div>
+
+<h3 id="prune">Prune<a class="anchor" href="#prune" aria-label="Link to this section">#</a></h3>
+<p><code>prune: true</code> rolls a bucket back to the snapshot. After <strong>every</strong> object has been copied,
+  planb lists the target prefix and deletes each object whose relative key isn't in the backup, 1,000 keys per
+  request. If any copy fails, nothing is deleted. The count is in <code>status.deletedItems</code> and in the
+  completion message:</p>
+<pre>kubectl get restore media-restore -n db -o jsonpath='{.status.message}'
+restore completed: 6 items, 1048611 bytes, 1 extra objects deleted</pre>
+<div class="callout warn"><strong>Prune deletes data</strong>
+  <p>It removes everything under the target prefix that isn't in the backup, including objects written after the
+    backup was taken. With an empty target prefix, that's the whole bucket. Double-check <code>target</code> before
+    applying, and restore into a fresh prefix first if you're unsure.</p></div>
+<p>Two safety rules always apply: objects outside the target prefix are never touched, and when the target is the
+  storage location's own bucket, planb's <code>backups/</code> folder is protected. While pruning, the Job keeps the
+  list of backed-up keys in memory, roughly 100 bytes per object, so give it more memory for buckets with millions
+  of objects.</p>
+
+<h2 id="large">Large buckets<a class="anchor" href="#large" aria-label="Link to this section">#</a></h2>
+<ul>
+  <li>Interrupted listings and downloads resume where they stopped, and each object copy is retried on its own; see
+    <a href="reliability.html">Retries and reliability</a>.</li>
+  <li>Objects of unknown size are uploaded in 64&nbsp;MiB parts. Set <code>PLANB_PART_SIZE_MB</code> for objects
+    above 640&nbsp;GiB.</li>
+  <li>Set <code>spec.job.activeDeadlineSeconds</code> to bound how long a backup may run.</li>
+</ul>
+<nav class="pager" aria-label="Previous and next page">
+<a href="postgres.html"><small>Previous</small>PostgreSQL</a>
+<a class="next" href="schedules.html"><small>Next</small>Schedules and retention</a>
+</nav>
+</article></main>
+</div>
+<footer>
+  <div class="wrap">
+    <span>planb: backup and restore for Kubernetes data services</span>
+    <a href="https://github.com/sina-devel/planb/edit/main/docs/buckets.html">Edit this page on GitHub</a>
+  </div>
+</footer>
+<script>
+  // On narrow screens the menu starts collapsed.
+  if (window.matchMedia("(max-width: 860px)").matches) document.querySelector("aside.side details").removeAttribute("open");
+</script>
+</body>
+</html>

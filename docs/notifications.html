@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Notifications · planb</title>
+<meta name="description" content="Get a Telegram, Slack, webhook or email message when backups and restores finish or fail.">
+<link rel="icon" href="assets/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="assets/site.css">
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <a class="logo" href="./">plan<span>b</span></a>
+    <nav>
+      <a href="getting-started.html" class="active">Docs</a>
+      <a class="hide-sm" href="reference.html">API</a>
+      <a href="https://github.com/sina-devel/planb">GitHub</a>
+    </nav>
+  </div>
+</header>
+<div class="wrap docs">
+<aside class="side"><details open><summary>Documentation menu</summary>
+<h4>Start</h4><ul>
+<li><a href="getting-started.html">Getting started</a></li>
+<li><a href="concepts.html">Concepts</a></li>
+</ul>
+<h4>Guides</h4><ul>
+<li><a href="storage-locations.html">Storage locations</a></li>
+<li><a href="postgres.html">PostgreSQL</a></li>
+<li><a href="buckets.html">S3 buckets</a></li>
+<li><a href="schedules.html">Schedules and retention</a></li>
+<li><a href="notifications.html" aria-current="page">Notifications</a></li>
+<li><a href="reliability.html">Retries and reliability</a></li>
+<li><a href="disaster-recovery.html">Disaster recovery</a></li>
+<li><a href="ui.html">Web UI</a></li>
+</ul>
+<h4>Operate</h4><ul>
+<li><a href="installation.html">Installation and Helm</a></li>
+<li><a href="upgrading.html">Upgrading</a></li>
+<li><a href="troubleshooting.html">Troubleshooting</a></li>
+</ul>
+<h4>Reference</h4><ul>
+<li><a href="reference.html">API reference</a></li>
+<li><a href="development.html">Development</a></li>
+</ul></details></aside>
+<main><article>
+<h1>Notifications</h1>
+<p class="lead">Get a Telegram, Slack, webhook or email message when backups and restores finish or fail.</p>
+<h2 id="overview">How it works<a class="anchor" href="#overview" aria-label="Link to this section">#</a></h2>
+<p>A <code>Notifier</code> watches the Backups and Restores in its own namespace. When one reaches
+  <code>Completed</code> or <code>Failed</code> and the event is in the Notifier's <code>events</code>, it sends one
+  message. Each Notifier has exactly one channel. For several channels, create several Notifiers.</p>
+<pre>apiVersion: planb.sina-devel.github.io/v1alpha1
+kind: Notifier
+metadata:
+  name: ops-telegram
+  namespace: db
+spec:
+  events: [BackupFailed, RestoreFailed]       # default
+  selector:                                   # optional: only matching Backups/Restores
+    matchLabels: { planb.sina-devel.github.io/schedule: app-nightly }
+  suspend: false
+  telegram:
+    chatID: "-1001234567890"
+    botToken: { name: telegram-bot, key: token }</pre>
+
+<h2 id="events">Events<a class="anchor" href="#events" aria-label="Link to this section">#</a></h2>
+<div class="table-wrap"><table>
+  <thead><tr><th>Event</th><th>Sent when</th></tr></thead>
+  <tbody>
+    <tr><td><code>BackupCompleted</code></td><td class="wrap-ok">a Backup reaches <code>Completed</code></td></tr>
+    <tr><td><code>BackupFailed</code></td><td class="wrap-ok">a Backup reaches <code>Failed</code>, including validation failures such as a read-only location</td></tr>
+    <tr><td><code>RestoreCompleted</code></td><td class="wrap-ok">a Restore reaches <code>Completed</code></td></tr>
+    <tr><td><code>RestoreFailed</code></td><td class="wrap-ok">a Restore reaches <code>Failed</code> or <code>FailedValidation</code></td></tr>
+  </tbody>
+</table></div>
+<p>Only failures are sent by default. Add <code>BackupCompleted</code> if you want a message for every successful
+  backup, for example as a heartbeat for a nightly schedule.</p>
+
+<h2 id="channels">Channels<a class="anchor" href="#channels" aria-label="Link to this section">#</a></h2>
+<h3 id="telegram">Telegram<a class="anchor" href="#telegram" aria-label="Link to this section">#</a></h3>
+<pre>telegram:
+  chatID: "-1001234567890"           # user ID, group ID or @channelname; the bot must be a member
+  botToken: { name: telegram-bot, key: token }
+  apiURL: https://api.telegram.org   # default; a self-hosted Bot API server or reverse proxy</pre>
+<p>Create a bot with <a href="https://t.me/BotFather">@BotFather</a>, add it to the group or channel, and get the
+  chat ID, for example from <code>https://api.telegram.org/bot&lt;token&gt;/getUpdates</code> after sending the bot
+  a message.</p>
+<h3 id="slack">Slack, Mattermost, Rocket.Chat<a class="anchor" href="#slack" aria-label="Link to this section">#</a></h3>
+<pre>slack:
+  webhookURL: { name: slack-webhook, key: url }   # incoming webhook URL, kept in a Secret
+  channel: "#backups"                             # optional, where the server allows overriding it</pre>
+<h3 id="webhook">Webhook<a class="anchor" href="#webhook" aria-label="Link to this section">#</a></h3>
+<pre>webhook:
+  url: https://hooks.example.com/planb            # or urlSecret: { name: ..., key: ... }
+  headers: { Authorization: "Bearer ..." }</pre>
+<p>planb POSTs one JSON object per event. A 2xx response counts as delivered:</p>
+<pre>{
+  "event": "BackupCompleted",
+  "cluster": "prod-eu",
+  "kind": "Backup",
+  "namespace": "db",
+  "name": "app-nightly-20261029010000",
+  "phase": "Completed",
+  "message": "",
+  "source": "postgres · postgres.db.svc / app",
+  "schedule": "app-nightly",
+  "storageLocation": "default",
+  "sizeBytes": 8271,
+  "items": 2,
+  "startTime": "2026-10-29T01:00:01Z",
+  "completionTime": "2026-10-29T01:00:09Z"
+}</pre>
+<p>Restores also carry <code>"backup"</code>, the Backup they restored from. Test messages have
+  <code>"event": "Test"</code>.</p>
+<h3 id="email">Email<a class="anchor" href="#email" aria-label="Link to this section">#</a></h3>
+<pre>email:
+  host: smtp.example.com
+  port: 587                       # default
+  tls: StartTLS                   # StartTLS (default, required upgrade) | TLS (implicit, port 465) | None
+  from: planb@example.com
+  to: [ops@example.com]
+  credentials: { name: smtp-credentials }   # keys username/password; omit for no AUTH</pre>
+
+<h2 id="delivery">Delivery<a class="anchor" href="#delivery" aria-label="Link to this section">#</a></h2>
+<ul>
+  <li><strong>At least once.</strong> After a successful delivery, the Notifier's name is added to the Backup's or
+    Restore's <code>planb.sina-devel.github.io/notified</code> annotation. Failed deliveries are retried every minute
+    for an hour.</li>
+  <li><strong>Only new events.</strong> Backups and Restores created before the Notifier, and Backups imported by
+    <a href="storage-locations.html#sync">sync</a>, are never notified.</li>
+  <li><strong>Status.</strong> <code>kubectl get notifiers</code> shows the channel, the events, the phase
+    (<code>Ready</code> or <code>Failed</code>) and when the last message was sent. A failure's reason is in
+    <code>status.message</code> and in a Warning event.</li>
+  <li><strong>Cluster name.</strong> Set <code>manager.clusterName</code> in the chart so messages say which cluster
+    sent them.</li>
+</ul>
+
+<h2 id="test">Sending a test message<a class="anchor" href="#test" aria-label="Link to this section">#</a></h2>
+<p>Use <strong>Test</strong> in the UI, or change the <code>planb.sina-devel.github.io/test</code> annotation to any
+  new value:</p>
+<pre>kubectl annotate notifier ops-telegram -n db planb.sina-devel.github.io/test="$(date +%s)" --overwrite
+kubectl get notifier ops-telegram -n db      # PHASE Ready, LAST SENT just now
+kubectl describe notifier ops-telegram -n db # the error, if it failed</pre>
+
+<h2 id="proxy">Proxies<a class="anchor" href="#proxy" aria-label="Link to this section">#</a></h2>
+<p>If Telegram, Slack or your webhook is only reachable through a proxy, set it in the chart. The proxy would also
+  apply to the Kubernetes API, so exclude the cluster:</p>
+<pre>manager:
+  extraEnv:
+    - { name: HTTPS_PROXY, value: "http://proxy.internal:3128" }
+    - { name: NO_PROXY, value: "10.0.0.0/8,.svc,.cluster.local,localhost" }</pre>
+<nav class="pager" aria-label="Previous and next page">
+<a href="schedules.html"><small>Previous</small>Schedules and retention</a>
+<a class="next" href="reliability.html"><small>Next</small>Retries and reliability</a>
+</nav>
+</article></main>
+</div>
+<footer>
+  <div class="wrap">
+    <span>planb: backup and restore for Kubernetes data services</span>
+    <a href="https://github.com/sina-devel/planb/edit/main/docs/notifications.html">Edit this page on GitHub</a>
+  </div>
+</footer>
+<script>
+  // On narrow screens the menu starts collapsed.
+  if (window.matchMedia("(max-width: 860px)").matches) document.querySelector("aside.side details").removeAttribute("open");
+</script>
+</body>
+</html>

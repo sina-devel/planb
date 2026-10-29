@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Concepts · planb</title>
+<meta name="description" content="How planb is built: the resources you create, what the operator does with them, and how data gets to the bucket.">
+<link rel="icon" href="assets/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="assets/site.css">
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <a class="logo" href="./">plan<span>b</span></a>
+    <nav>
+      <a href="getting-started.html" class="active">Docs</a>
+      <a class="hide-sm" href="reference.html">API</a>
+      <a href="https://github.com/sina-devel/planb">GitHub</a>
+    </nav>
+  </div>
+</header>
+<div class="wrap docs">
+<aside class="side"><details open><summary>Documentation menu</summary>
+<h4>Start</h4><ul>
+<li><a href="getting-started.html">Getting started</a></li>
+<li><a href="concepts.html" aria-current="page">Concepts</a></li>
+</ul>
+<h4>Guides</h4><ul>
+<li><a href="storage-locations.html">Storage locations</a></li>
+<li><a href="postgres.html">PostgreSQL</a></li>
+<li><a href="buckets.html">S3 buckets</a></li>
+<li><a href="schedules.html">Schedules and retention</a></li>
+<li><a href="notifications.html">Notifications</a></li>
+<li><a href="reliability.html">Retries and reliability</a></li>
+<li><a href="disaster-recovery.html">Disaster recovery</a></li>
+<li><a href="ui.html">Web UI</a></li>
+</ul>
+<h4>Operate</h4><ul>
+<li><a href="installation.html">Installation and Helm</a></li>
+<li><a href="upgrading.html">Upgrading</a></li>
+<li><a href="troubleshooting.html">Troubleshooting</a></li>
+</ul>
+<h4>Reference</h4><ul>
+<li><a href="reference.html">API reference</a></li>
+<li><a href="development.html">Development</a></li>
+</ul></details></aside>
+<main><article>
+<h1>Concepts</h1>
+<p class="lead">How planb is built: the resources you create, what the operator does with them, and how data gets to the bucket.</p>
+<h2 id="resources">Resources<a class="anchor" href="#resources" aria-label="Link to this section">#</a></h2>
+<p>planb adds five namespaced resources to the API group <code>planb.sina-devel.github.io/v1alpha1</code>. A resource
+  only refers to Secrets and other planb resources in its own namespace.</p>
+<div class="table-wrap"><table>
+  <thead><tr><th>Kind</th><th>Short name</th><th>Purpose</th></tr></thead>
+  <tbody>
+    <tr><td><code>BackupStorageLocation</code></td><td><code>bsl</code></td><td class="wrap-ok">A bucket where backups are written. Checked periodically and synced back into the cluster.</td></tr>
+    <tr><td><code>Backup</code></td><td></td><td class="wrap-ok">One backup of a PostgreSQL server or of a bucket. Deleting it deletes its data.</td></tr>
+    <tr><td><code>Schedule</code></td><td></td><td class="wrap-ok">Creates Backups from a template on a cron schedule, and keeps the last N.</td></tr>
+    <tr><td><code>Restore</code></td><td></td><td class="wrap-ok">Restores a Backup to where it came from or to a different target.</td></tr>
+    <tr><td><code>Notifier</code></td><td></td><td class="wrap-ok">Sends a Telegram, Slack, webhook or email message when Backups or Restores finish.</td></tr>
+  </tbody>
+</table></div>
+
+<h2 id="architecture">Architecture<a class="anchor" href="#architecture" aria-label="Link to this section">#</a></h2>
+<p>planb is a single binary with three modes:</p>
+<ul>
+  <li><strong><code>manager</code></strong>: the operator. It watches the resources, creates Jobs, records results,
+    garbage-collects expired backups and sends notifications. It never touches your data itself.</li>
+  <li><strong><code>agent</code></strong>: runs inside each backup or restore Job and moves the data.</li>
+  <li><strong><code>ui</code></strong>: the optional web UI and its JSON API.</li>
+</ul>
+<div class="diagram" role="img" aria-label="A Backup resource is read by the operator, which starts a Job. The Job streams data from PostgreSQL or a bucket into the backup bucket and reports a result back to the operator, which writes planb-backup.json next to the data.">
+<svg viewBox="0 0 720 220" width="720">
+  <defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="arrowhead"/></marker></defs>
+  <rect class="box" x="10" y="20" width="130" height="54" rx="8"/><text x="75" y="44" text-anchor="middle">Backup CR</text><text x="75" y="62" text-anchor="middle" class="muted">kubectl apply</text>
+  <rect class="accent" x="200" y="20" width="150" height="54" rx="8"/><text x="275" y="44" text-anchor="middle">operator</text><text x="275" y="62" text-anchor="middle" class="muted">planb manager</text>
+  <rect class="accent" x="200" y="140" width="150" height="54" rx="8"/><text x="275" y="164" text-anchor="middle">Job</text><text x="275" y="182" text-anchor="middle" class="muted">planb agent</text>
+  <rect class="box" x="10" y="140" width="130" height="54" rx="8"/><text x="75" y="164" text-anchor="middle">PostgreSQL</text><text x="75" y="182" text-anchor="middle" class="muted">or a bucket</text>
+  <rect class="box" x="450" y="80" width="260" height="114" rx="8"/><text x="580" y="104" text-anchor="middle">backup bucket</text>
+  <text x="470" y="130" class="muted">&lt;prefix&gt;/backups/&lt;name&gt;/</text><text x="482" y="152" class="muted">postgres/app.dump  ·  bucket/…</text><text x="482" y="174" class="muted">planb-backup.json</text>
+  <path class="line" d="M140,47 H198" marker-end="url(#ah)"/>
+  <path class="line" d="M262,74 V138" marker-end="url(#ah)"/><text x="190" y="110" class="muted">creates</text>
+  <path class="line" d="M290,138 V74" marker-end="url(#ah)"/><text x="298" y="110" class="muted">result</text>
+  <path class="line" d="M140,167 H198" marker-end="url(#ah)"/><text x="150" y="160" class="muted">read</text>
+  <path class="line" d="M350,167 H448" marker-end="url(#ah)"/><text x="372" y="160" class="muted">stream</text>
+  <path class="line" d="M350,40 H580 V78" marker-end="url(#ah)"/><text x="420" y="34" class="muted">metadata</text>
+</svg></div>
+<ol>
+  <li>You create a <code>Backup</code>, or a <code>Schedule</code> creates one.</li>
+  <li>The operator checks it: the storage location must exist, be <code>ReadWrite</code> and be reachable. It then
+    creates a Job named <code>planb-backup-&lt;name&gt;</code> in the Backup's namespace.</li>
+  <li>The Job runs the same image in <code>agent</code> mode. The image contains the PostgreSQL client tools. The agent
+    streams data from the source into the bucket.</li>
+  <li>The agent reports size, item count and files through the container's termination message.</li>
+  <li>The operator copies the result into the Backup's status, sets the expiration and writes
+    <code>planb-backup.json</code> next to the data. Sync uses that file to recognise finished backups, so a
+    folder without it is never imported.</li>
+</ol>
+<p>Restores work the same way, with a Job named <code>planb-restore-&lt;name&gt;</code> running in the opposite direction.</p>
+
+<h2 id="streaming">Streaming, not staging<a class="anchor" href="#streaming" aria-label="Link to this section">#</a></h2>
+<p>Nothing is written to local disk. A PostgreSQL backup is <code>pg_dump | upload</code> and a restore is
+  <code>download | pg_restore</code>. Uploads use S3 multipart upload in 64&nbsp;MiB parts, so memory use stays flat
+  however big the dump is. One object can be up to 10,000 parts, about 640&nbsp;GiB by default. Set the
+  <code>PLANB_PART_SIZE_MB</code> environment variable in the image to raise the part size and with it the limit.</p>
+
+<h2 id="layout">Storage layout<a class="anchor" href="#layout" aria-label="Link to this section">#</a></h2>
+<pre>s3://&lt;bucket&gt;/&lt;prefix&gt;/backups/&lt;backup-name&gt;/
+├── planb-backup.json          # the Backup object (spec + status): used by sync
+├── postgres/
+│   ├── app.dump               # pg_dump --format=custom, one per database
+│   ├── globals.sql.gz         # roles and tablespaces (includeGlobals)
+│   └── all.sql.gz             # pg_dumpall, when no databases are listed
+└── bucket/
+    └── ...                    # objects of a bucket backup, with relative keys</pre>
+<p>Each backup is a self-contained folder. You can copy, inspect or restore it by hand with standard tools; see
+  <a href="disaster-recovery.html#manual">manual restore</a>.</p>
+
+<h2 id="security">Credentials and security<a class="anchor" href="#security" aria-label="Link to this section">#</a></h2>
+<ul>
+  <li>Secrets reach the Jobs only through <code>secretKeyRef</code> environment variables. They never appear in a
+    resource, in Job arguments or in logs.</li>
+  <li>When an S3 spec has no <code>credentials</code>, planb uses the standard AWS credential chain: the
+    <code>AWS_ACCESS_KEY_ID</code>/<code>AWS_SECRET_ACCESS_KEY</code> environment variables, then the instance or pod
+    IAM role. Use <code>spec.job.serviceAccountName</code> for IRSA or Workload Identity.</li>
+  <li>Jobs run as a non-root user with a read-only root filesystem, no privilege escalation, all capabilities dropped
+    and the <code>RuntimeDefault</code> seccomp profile.</li>
+  <li>The operator's ClusterRole lets it <code>get</code> (not list) Secrets and namespaces, create and delete
+    Jobs, read Pods to collect results, and record Events. With <code>manager.watchNamespace</code> it only
+    watches one namespace.</li>
+</ul>
+
+<h2 id="lifecycle">Lifecycles<a class="anchor" href="#lifecycle" aria-label="Link to this section">#</a></h2>
+<div class="table-wrap"><table>
+  <thead><tr><th>Resource</th><th>Phases</th></tr></thead>
+  <tbody>
+    <tr><td>Backup</td><td class="wrap-ok"><code>New</code> → <code>InProgress</code> → <code>Completed</code> or <code>Failed</code>; <code>Deleting</code> while its data is removed</td></tr>
+    <tr><td>Restore</td><td class="wrap-ok"><code>New</code> → <code>InProgress</code> → <code>Completed</code> or <code>Failed</code>; <code>FailedValidation</code> when the spec doesn't fit the backup</td></tr>
+    <tr><td>BackupStorageLocation</td><td class="wrap-ok"><code>Available</code> or <code>Unavailable</code>, checked every <code>syncPeriod</code> (default 1m)</td></tr>
+    <tr><td>Schedule</td><td class="wrap-ok"><code>Enabled</code>, <code>Paused</code> or <code>FailedValidation</code> (for example, a bad cron expression)</td></tr>
+    <tr><td>Notifier</td><td class="wrap-ok"><code>Ready</code>, or <code>Failed</code> after a failed delivery until the next success</td></tr>
+  </tbody>
+</table></div>
+<p>Each step is recorded as a Kubernetes Event on the resource, visible in <code>kubectl describe</code>.</p>
+
+<h2 id="velero">Compared with Velero<a class="anchor" href="#velero" aria-label="Link to this section">#</a></h2>
+<p>planb borrows Velero's resource model: storage locations, backups, schedules, restores, TTLs and sync from
+  storage. Velero backs up Kubernetes objects and volumes. planb backs up data services through their own tools:
+  <code>pg_dump</code> for PostgreSQL and object copies for buckets. The two complement each other: use Velero for
+  manifests and PVCs, and planb for consistent logical database dumps and bucket snapshots.</p>
+<nav class="pager" aria-label="Previous and next page">
+<a href="getting-started.html"><small>Previous</small>Getting started</a>
+<a class="next" href="storage-locations.html"><small>Next</small>Storage locations</a>
+</nav>
+</article></main>
+</div>
+<footer>
+  <div class="wrap">
+    <span>planb: backup and restore for Kubernetes data services</span>
+    <a href="https://github.com/sina-devel/planb/edit/main/docs/concepts.html">Edit this page on GitHub</a>
+  </div>
+</footer>
+<script>
+  // On narrow screens the menu starts collapsed.
+  if (window.matchMedia("(max-width: 860px)").matches) document.querySelector("aside.side details").removeAttribute("open");
+</script>
+</body>
+</html>

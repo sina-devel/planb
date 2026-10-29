@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Web UI · planb</title>
+<meta name="description" content="An optional single-page UI to watch backups, run them, restore with a few clicks and read job logs.">
+<link rel="icon" href="assets/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="assets/site.css">
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <a class="logo" href="./">plan<span>b</span></a>
+    <nav>
+      <a href="getting-started.html" class="active">Docs</a>
+      <a class="hide-sm" href="reference.html">API</a>
+      <a href="https://github.com/sina-devel/planb">GitHub</a>
+    </nav>
+  </div>
+</header>
+<div class="wrap docs">
+<aside class="side"><details open><summary>Documentation menu</summary>
+<h4>Start</h4><ul>
+<li><a href="getting-started.html">Getting started</a></li>
+<li><a href="concepts.html">Concepts</a></li>
+</ul>
+<h4>Guides</h4><ul>
+<li><a href="storage-locations.html">Storage locations</a></li>
+<li><a href="postgres.html">PostgreSQL</a></li>
+<li><a href="buckets.html">S3 buckets</a></li>
+<li><a href="schedules.html">Schedules and retention</a></li>
+<li><a href="notifications.html">Notifications</a></li>
+<li><a href="reliability.html">Retries and reliability</a></li>
+<li><a href="disaster-recovery.html">Disaster recovery</a></li>
+<li><a href="ui.html" aria-current="page">Web UI</a></li>
+</ul>
+<h4>Operate</h4><ul>
+<li><a href="installation.html">Installation and Helm</a></li>
+<li><a href="upgrading.html">Upgrading</a></li>
+<li><a href="troubleshooting.html">Troubleshooting</a></li>
+</ul>
+<h4>Reference</h4><ul>
+<li><a href="reference.html">API reference</a></li>
+<li><a href="development.html">Development</a></li>
+</ul></details></aside>
+<main><article>
+<h1>Web UI</h1>
+<p class="lead">An optional single-page UI to watch backups, run them, restore with a few clicks and read job logs.</p>
+<h2 id="enable">Enable it<a class="anchor" href="#enable" aria-label="Link to this section">#</a></h2>
+<pre>helm upgrade --install planb charts/planb -n planb-system --reuse-values \
+  --set ui.enabled=true \
+  --set ui.auth.username=admin --set ui.auth.password='a-long-random-password'</pre>
+<p>Open it with a port-forward:</p>
+<pre>kubectl port-forward -n planb-system svc/planb-ui 8090:80
+# http://localhost:8090</pre>
+<p>Or expose it through an Ingress:</p>
+<pre>ui:
+  ingress:
+    enabled: true
+    className: traefik             # or nginx, ...
+    host: planb.example.com
+    tls: [{ secretName: planb-tls, hosts: [planb.example.com] }]</pre>
+<div class="callout warn"><strong>Set authentication before exposing it</strong>
+  <p>The UI can create restores and delete backups. Use <code>ui.auth</code>, or <code>ui.auth.existingSecret</code>
+    pointing at a Secret with <code>username</code> and <code>password</code> keys, or put it behind your own
+    authenticating proxy. For a view-only dashboard, set <code>ui.readOnly: true</code>.</p></div>
+
+<h2 id="features">What it does<a class="anchor" href="#features" aria-label="Link to this section">#</a></h2>
+<ul>
+  <li>Lists storage locations, backups, schedules, restores and notifiers in every namespace (or one, with
+    <code>ui.namespace</code>), refreshing every 5 seconds, with filters and pagination.</li>
+  <li><strong>Backups:</strong> create one from a form or a JSON spec, delete, view the Job's logs.</li>
+  <li><strong>Restore</strong> from any completed backup: target server or bucket, database mapping,
+    <code>clean</code>, overwrite and prune.</li>
+  <li><strong>Schedules:</strong> create, <strong>Run now</strong>, pause and resume.</li>
+  <li><strong>Storage locations and notifiers:</strong> create them, including their Secrets, and send a test
+    message.</li>
+</ul>
+
+<h2 id="settings">Settings<a class="anchor" href="#settings" aria-label="Link to this section">#</a></h2>
+<div class="table-wrap"><table>
+  <thead><tr><th>Chart value</th><th>Default</th><th>Effect</th></tr></thead>
+  <tbody>
+    <tr><td><code>ui.enabled</code></td><td><code>false</code></td><td class="wrap-ok">Deploy the UI.</td></tr>
+    <tr><td><code>ui.readOnly</code></td><td><code>false</code></td><td class="wrap-ok">Hide all actions. The UI's RBAC becomes read-only too.</td></tr>
+    <tr><td><code>ui.namespace</code></td><td><code>""</code></td><td class="wrap-ok">Only show and change resources in this namespace.</td></tr>
+    <tr><td><code>ui.auth.username</code>, <code>.password</code></td><td><code>""</code></td><td class="wrap-ok">HTTP basic auth, stored in the Secret <code>planb-ui-auth</code>.</td></tr>
+    <tr><td><code>ui.auth.existingSecret</code></td><td><code>""</code></td><td class="wrap-ok">Use your own Secret with <code>username</code> and <code>password</code> keys.</td></tr>
+    <tr><td><code>ui.ingress.*</code></td><td>disabled</td><td class="wrap-ok"><code>className</code>, <code>annotations</code>, <code>host</code>, <code>tls</code>.</td></tr>
+  </tbody>
+</table></div>
+
+<h2 id="api">JSON API<a class="anchor" href="#api" aria-label="Link to this section">#</a></h2>
+<p>The UI is one embedded HTML file with no build step, talking to a small JSON API that you can script against.
+  The API uses the same basic auth.</p>
+<div class="table-wrap"><table>
+  <thead><tr><th>Method and path</th><th>Does</th></tr></thead>
+  <tbody>
+    <tr><td><code>GET /api/overview</code></td><td class="wrap-ok">All resources the UI can see</td></tr>
+    <tr><td><code>GET /api/config</code></td><td class="wrap-ok">Read-only mode and namespace restriction</td></tr>
+    <tr><td><code>GET /api/logs/{ns}/{job}</code></td><td class="wrap-ok">Logs of a backup or restore Job</td></tr>
+    <tr><td><code>POST /api/backups</code></td><td class="wrap-ok"><code>{namespace, name?, spec}</code>, or <code>{namespace, schedule}</code> for "run now"</td></tr>
+    <tr><td><code>POST /api/restores</code></td><td class="wrap-ok"><code>{namespace, name?, spec}</code></td></tr>
+    <tr><td><code>POST /api/schedules</code>, <code>/api/storagelocations</code>, <code>/api/notifiers</code></td><td class="wrap-ok"><code>{namespace, name, spec, secrets?}</code>; <code>secrets</code> are created first and never overwritten</td></tr>
+    <tr><td><code>POST /api/schedules/{ns}/{name}/{pause|resume}</code></td><td class="wrap-ok">Pause or resume</td></tr>
+    <tr><td><code>POST /api/notifiers/{ns}/{name}/test</code></td><td class="wrap-ok">Send a test message</td></tr>
+    <tr><td><code>DELETE /api/{kind}/{ns}/{name}</code></td><td class="wrap-ok">Delete a backup, restore, schedule, storage location or notifier</td></tr>
+  </tbody>
+</table></div>
+<pre>curl -u admin:$PASS -H 'Content-Type: application/json' -X POST http://localhost:8090/api/restores \
+  -d '{"namespace":"db","name":"app-check","spec":{"backupName":"app-1","postgres":{"databaseMapping":{"app":"app_check"}}}}'</pre>
+<nav class="pager" aria-label="Previous and next page">
+<a href="disaster-recovery.html"><small>Previous</small>Disaster recovery</a>
+<a class="next" href="installation.html"><small>Next</small>Installation and Helm</a>
+</nav>
+</article></main>
+</div>
+<footer>
+  <div class="wrap">
+    <span>planb: backup and restore for Kubernetes data services</span>
+    <a href="https://github.com/sina-devel/planb/edit/main/docs/ui.html">Edit this page on GitHub</a>
+  </div>
+</footer>
+<script>
+  // On narrow screens the menu starts collapsed.
+  if (window.matchMedia("(max-width: 860px)").matches) document.querySelector("aside.side details").removeAttribute("open");
+</script>
+</body>
+</html>

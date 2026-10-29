@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>planb</title>
+<meta name="description" content="planb is a Kubernetes operator that backs up and restores PostgreSQL databases and S3 buckets to any S3-compatible object store.">
+<link rel="icon" href="assets/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="assets/site.css">
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <a class="logo" href="./">plan<span>b</span></a>
+    <nav>
+      <a href="getting-started.html">Docs</a>
+      <a class="hide-sm" href="reference.html">API</a>
+      <a href="https://github.com/sina-devel/planb">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <div class="wrap hero">
+    <h1>Backup and restore for the data your cluster runs on</h1>
+    <p>planb is a Kubernetes operator that backs up PostgreSQL databases and S3 buckets to any S3-compatible
+      object store, and brings them back when you need them. It works like Velero, but for data services.</p>
+    <div class="actions">
+      <a class="btn primary" href="getting-started.html">Get started</a>
+      <a class="btn" href="concepts.html">How it works</a>
+    </div>
+  </div>
+
+  <section class="band">
+    <div class="wrap">
+      <h2>What it backs up</h2>
+      <p class="lead">Backups go to AWS S3, MinIO, Ceph RGW, Cloudflare R2 or any other S3-compatible store.</p>
+      <div class="grid">
+        <a class="card" href="postgres.html">
+          <h3>PostgreSQL</h3>
+          <p>One binary <code>pg_dump</code> archive per database, or the whole server with <code>pg_dumpall</code>.
+            Restore in place, under a new name or onto another server.</p>
+        </a>
+        <a class="card" href="buckets.html">
+          <h3>S3 buckets</h3>
+          <p>Snapshot every object in a bucket or under a prefix. Restore it anywhere, and optionally prune the target
+            so it matches the snapshot exactly.</p>
+        </a>
+        <a class="card" href="notifications.html">
+          <h3>Notifications</h3>
+          <p>A message on Telegram, Slack, a webhook or email when a backup or restore finishes or fails.</p>
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <section class="band">
+    <div class="wrap">
+      <h2>Built to be trusted</h2>
+      <p class="lead">Each backup or restore runs as a Kubernetes Job that streams data straight to object storage.</p>
+      <div class="grid two">
+        <a class="card" href="reliability.html">
+          <h3>Rides out outages</h3>
+          <p>Retries with exponential backoff at three levels, resumable downloads and listings, and PostgreSQL-aware
+            rules so a restore is never repeated in a way that could corrupt it.</p>
+        </a>
+        <a class="card" href="disaster-recovery.html">
+          <h3>Ready for disaster recovery</h3>
+          <p>Point a new cluster at the same bucket and planb imports the backups it finds there. The format is plain
+            files you can also restore by hand.</p>
+        </a>
+        <a class="card" href="schedules.html">
+          <h3>Schedules and retention</h3>
+          <p>Cron schedules with time zones, keep-last-N, TTLs, and data that is deleted with its Backup, unless you
+            choose to keep it.</p>
+        </a>
+        <a class="card" href="concepts.html#security">
+          <h3>Credentials stay in Secrets</h3>
+          <p>Jobs read credentials only through <code>secretKeyRef</code>, run as non-root on a read-only filesystem,
+            and stream without touching local disk.</p>
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <section class="band">
+    <div class="wrap">
+      <h2>Five resources</h2>
+      <p class="lead">All namespaced, in the API group <code>planb.sina-devel.github.io/v1alpha1</code>.</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Kind</th><th>Purpose</th></tr></thead>
+          <tbody>
+            <tr><td><a href="storage-locations.html"><code>BackupStorageLocation</code></a></td><td class="wrap-ok">The bucket backups are written to. Checked periodically and synced back into the cluster.</td></tr>
+            <tr><td><a href="reference.html#backup"><code>Backup</code></a></td><td class="wrap-ok">A one-off backup of a PostgreSQL server or a bucket.</td></tr>
+            <tr><td><a href="schedules.html"><code>Schedule</code></a></td><td class="wrap-ok">Creates Backups on a cron schedule and keeps the last N.</td></tr>
+            <tr><td><a href="reference.html#restore"><code>Restore</code></a></td><td class="wrap-ok">Restores a Backup to its original source or a different target.</td></tr>
+            <tr><td><a href="notifications.html"><code>Notifier</code></a></td><td class="wrap-ok">Sends a message when backups or restores finish.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section class="band">
+    <div class="wrap">
+      <h2>Quick start</h2>
+      <p class="lead">Install the operator, then follow <a href="getting-started.html">Getting started</a> for your
+        first backup and restore.</p>
+<pre>git clone https://github.com/sina-devel/planb && cd planb
+helm upgrade --install planb charts/planb -n planb-system --create-namespace</pre>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>planb: backup and restore for Kubernetes data services</span>
+    <a href="https://github.com/sina-devel/planb">github.com/sina-devel/planb</a>
+  </div>
+</footer>
+</body>
+</html>

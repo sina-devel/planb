@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Retries and reliability · planb</title>
+<meta name="description" content="Networks drop, providers throttle and databases restart. planb retries transient failures at three levels, resumes interrupted transfers, and never repeats a step that could corrupt a restore.">
+<link rel="icon" href="assets/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="assets/site.css">
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <a class="logo" href="./">plan<span>b</span></a>
+    <nav>
+      <a href="getting-started.html" class="active">Docs</a>
+      <a class="hide-sm" href="reference.html">API</a>
+      <a href="https://github.com/sina-devel/planb">GitHub</a>
+    </nav>
+  </div>
+</header>
+<div class="wrap docs">
+<aside class="side"><details open><summary>Documentation menu</summary>
+<h4>Start</h4><ul>
+<li><a href="getting-started.html">Getting started</a></li>
+<li><a href="concepts.html">Concepts</a></li>
+</ul>
+<h4>Guides</h4><ul>
+<li><a href="storage-locations.html">Storage locations</a></li>
+<li><a href="postgres.html">PostgreSQL</a></li>
+<li><a href="buckets.html">S3 buckets</a></li>
+<li><a href="schedules.html">Schedules and retention</a></li>
+<li><a href="notifications.html">Notifications</a></li>
+<li><a href="reliability.html" aria-current="page">Retries and reliability</a></li>
+<li><a href="disaster-recovery.html">Disaster recovery</a></li>
+<li><a href="ui.html">Web UI</a></li>
+</ul>
+<h4>Operate</h4><ul>
+<li><a href="installation.html">Installation and Helm</a></li>
+<li><a href="upgrading.html">Upgrading</a></li>
+<li><a href="troubleshooting.html">Troubleshooting</a></li>
+</ul>
+<h4>Reference</h4><ul>
+<li><a href="reference.html">API reference</a></li>
+<li><a href="development.html">Development</a></li>
+</ul></details></aside>
+<main><article>
+<h1>Retries and reliability</h1>
+<p class="lead">Networks drop, providers throttle and databases restart. planb retries transient failures at three levels, resumes interrupted transfers, and never repeats a step that could corrupt a restore.</p>
+<h2 id="layers">Three layers of retries<a class="anchor" href="#layers" aria-label="Link to this section">#</a></h2>
+<div class="table-wrap"><table>
+  <thead><tr><th>Layer</th><th>What's retried</th><th>How</th></tr></thead>
+  <tbody>
+    <tr><td>1. S3 request</td><td class="wrap-ok">every single HTTP request: throttling, 5xx, timeouts, connection errors</td><td class="wrap-ok">up to 10 tries, exponential backoff from 500&nbsp;ms to 15&nbsp;s with jitter</td></tr>
+    <tr><td>2. Operation</td><td class="wrap-ok">each object copy, listing, dump file, download and database connection</td><td class="wrap-ok"><code>spec.job.retry</code>: 5 attempts, 2&nbsp;s doubling to at most 1&nbsp;min, with jitter</td></tr>
+    <tr><td>3. Job</td><td class="wrap-ok">the whole backup or restore</td><td class="wrap-ok"><code>spec.job.backoffLimit</code> (default 1): Kubernetes starts a new Pod</td></tr>
+  </tbody>
+</table></div>
+<p>Retries happen inside the Job, so a Backup stays <code>InProgress</code> while it retries. Each retry is logged
+  with the error, the attempt number and the wait:</p>
+<pre>kubectl logs -n db job/planb-backup-app-1 | grep retrying
+level=WARN msg="retrying after error" operation="copy s3://media/uploads/a.jpg" attempt=1 of=5 wait=1.4s error="...connection refused"</pre>
+
+<h2 id="configure">Configuring<a class="anchor" href="#configure" aria-label="Link to this section">#</a></h2>
+<p><code>spec.job.retry</code> is available on Backups, Schedule templates and Restores:</p>
+<pre>spec:
+  job:
+    retry:
+      attempts: 8           # per operation, including the first try (1–50, default 5)
+      initialBackoff: 2s    # wait before the second try, doubled after each failure (default 2s)
+      maxBackoff: 2m        # cap on the wait (default 1m)
+    backoffLimit: 2         # then restart the whole Job up to twice</pre>
+<p>Each wait is between half and all of the current backoff, picked at random. Parallel workers therefore spread out
+  instead of retrying together, and a rate limit always gets real breathing room. The two layers multiply: each
+  operation attempt already includes layer 1's request retries. With the defaults, an S3 operation survives
+  outages of a few minutes. Raise <code>attempts</code> and <code>maxBackoff</code> for providers with long
+  maintenance windows.</p>
+
+<h2 id="classification">What's retried and what isn't<a class="anchor" href="#classification" aria-label="Link to this section">#</a></h2>
+<div class="grid two">
+  <div class="card"><h3>Retried</h3><p>Connection refused or reset, DNS failures, timeouts, unexpected EOF.
+    S3 <code>SlowDown</code>, <code>Throttling</code>, <code>RequestTimeout</code>, <code>InternalError</code>,
+    HTTP 408, 429 and 5xx, expired temporary tokens. PostgreSQL "connection refused", "the database system is
+    starting up", "too many clients", "server closed the connection unexpectedly".</p></div>
+  <div class="card"><h3>Fails at once</h3><p>Wrong keys or password, access denied, missing bucket, key or
+    database, TLS certificate errors, an object that changed during a resumed download, SQL errors in a restore,
+    invalid arguments. Retrying these only delays the error message.</p></div>
+</div>
+
+<h2 id="resume">Resuming instead of restarting<a class="anchor" href="#resume" aria-label="Link to this section">#</a></h2>
+<ul>
+  <li><strong>Downloads</strong> (bucket restores, the source side of bucket backups, PostgreSQL restores) resume at
+    the byte where they stopped, using a range request. Every resume is tied to the object's ETag: if the object
+    changed in the meantime, the download fails instead of joining two versions.</li>
+  <li><strong>Listings</strong> continue after the last key they returned.</li>
+  <li><strong>Uploads</strong> are multipart. Each 64&nbsp;MiB part is retried by layer 1. If an upload fails for good,
+    the incomplete multipart upload is aborted so it doesn't keep costing storage.</li>
+</ul>
+
+<h2 id="postgres-safety">PostgreSQL: safe to repeat?<a class="anchor" href="#postgres-safety" aria-label="Link to this section">#</a></h2>
+<p>Re-running a step must never leave a database worse off. planb decides per step:</p>
+<div class="table-wrap"><table>
+  <thead><tr><th>Step</th><th>Retried after</th><th>Why</th></tr></thead>
+  <tbody>
+    <tr><td><code>pg_dump</code>, <code>pg_dumpall</code></td><td class="wrap-ok">any transient failure</td><td class="wrap-ok">read-only on the server; the new upload replaces the partial one</td></tr>
+    <tr><td>create database</td><td class="wrap-ok">any transient failure</td><td class="wrap-ok">checks whether the database exists before creating it</td></tr>
+    <tr><td><code>pg_restore</code> with <code>clean</code></td><td class="wrap-ok">any transient failure</td><td class="wrap-ok"><code>--clean</code> drops what the failed attempt created</td></tr>
+    <tr><td><code>pg_restore</code> without <code>clean</code></td><td class="wrap-ok">only failures to connect</td><td class="wrap-ok">a half-restored database would make a second run fail on duplicates</td></tr>
+    <tr><td><code>psql</code> (full-server and globals)</td><td class="wrap-ok">only failures to connect</td><td class="wrap-ok">SQL replay isn't idempotent</td></tr>
+  </tbody>
+</table></div>
+<p>When a restore can't be retried, it fails with the original error. Re-run it with <code>clean: true</code>, or
+  into a fresh database name.</p>
+
+<h2 id="job">Job-level settings<a class="anchor" href="#job" aria-label="Link to this section">#</a></h2>
+<div class="table-wrap"><table>
+  <thead><tr><th>spec.job field</th><th>Use</th></tr></thead>
+  <tbody>
+    <tr><td><code>backoffLimit</code></td><td class="wrap-ok">New Pods after the in-Job retries are used up (default 1). The Job's own backoff applies between Pods.</td></tr>
+    <tr><td><code>activeDeadlineSeconds</code></td><td class="wrap-ok">Hard limit for the whole Job, retries included. The Backup fails with <code>DeadlineExceeded</code>.</td></tr>
+    <tr><td><code>resources</code></td><td class="wrap-ok">CPU and memory for the agent. About 64&nbsp;MiB per concurrent upload plus the PostgreSQL tools.</td></tr>
+    <tr><td><code>nodeSelector</code>, <code>tolerations</code></td><td class="wrap-ok">Where the Job runs, for example close to the database.</td></tr>
+    <tr><td><code>serviceAccountName</code></td><td class="wrap-ok">For IAM roles (IRSA, Workload Identity) instead of access keys.</td></tr>
+    <tr><td><code>image</code></td><td class="wrap-ok">Another agent image, for example with a different PostgreSQL client.</td></tr>
+  </tbody>
+</table></div>
+<nav class="pager" aria-label="Previous and next page">
+<a href="notifications.html"><small>Previous</small>Notifications</a>
+<a class="next" href="disaster-recovery.html"><small>Next</small>Disaster recovery</a>
+</nav>
+</article></main>
+</div>
+<footer>
+  <div class="wrap">
+    <span>planb: backup and restore for Kubernetes data services</span>
+    <a href="https://github.com/sina-devel/planb/edit/main/docs/reliability.html">Edit this page on GitHub</a>
+  </div>
+</footer>
+<script>
+  // On narrow screens the menu starts collapsed.
+  if (window.matchMedia("(max-width: 860px)").matches) document.querySelector("aside.side details").removeAttribute("open");
+</script>
+</body>
+</html>

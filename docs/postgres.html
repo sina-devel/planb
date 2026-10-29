@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PostgreSQL · planb</title>
+<meta name="description" content="Back up single databases as binary pg_dump archives or a whole server as SQL, then restore them in place, under new names or onto another server.">
+<link rel="icon" href="assets/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="assets/site.css">
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <a class="logo" href="./">plan<span>b</span></a>
+    <nav>
+      <a href="getting-started.html" class="active">Docs</a>
+      <a class="hide-sm" href="reference.html">API</a>
+      <a href="https://github.com/sina-devel/planb">GitHub</a>
+    </nav>
+  </div>
+</header>
+<div class="wrap docs">
+<aside class="side"><details open><summary>Documentation menu</summary>
+<h4>Start</h4><ul>
+<li><a href="getting-started.html">Getting started</a></li>
+<li><a href="concepts.html">Concepts</a></li>
+</ul>
+<h4>Guides</h4><ul>
+<li><a href="storage-locations.html">Storage locations</a></li>
+<li><a href="postgres.html" aria-current="page">PostgreSQL</a></li>
+<li><a href="buckets.html">S3 buckets</a></li>
+<li><a href="schedules.html">Schedules and retention</a></li>
+<li><a href="notifications.html">Notifications</a></li>
+<li><a href="reliability.html">Retries and reliability</a></li>
+<li><a href="disaster-recovery.html">Disaster recovery</a></li>
+<li><a href="ui.html">Web UI</a></li>
+</ul>
+<h4>Operate</h4><ul>
+<li><a href="installation.html">Installation and Helm</a></li>
+<li><a href="upgrading.html">Upgrading</a></li>
+<li><a href="troubleshooting.html">Troubleshooting</a></li>
+</ul>
+<h4>Reference</h4><ul>
+<li><a href="reference.html">API reference</a></li>
+<li><a href="development.html">Development</a></li>
+</ul></details></aside>
+<main><article>
+<h1>PostgreSQL</h1>
+<p class="lead">Back up single databases as binary pg_dump archives or a whole server as SQL, then restore them in place, under new names or onto another server.</p>
+<h2 id="modes">Two backup modes<a class="anchor" href="#modes" aria-label="Link to this section">#</a></h2>
+<div class="table-wrap"><table>
+  <thead><tr><th>Spec</th><th>Tool</th><th>Stored as</th><th>Restore</th></tr></thead>
+  <tbody>
+    <tr><td><code>databases: [a, b]</code></td><td><code>pg_dump --format=custom</code></td><td class="wrap-ok"><code>postgres/a.dump</code>, <code>postgres/b.dump</code>: binary, compressed</td><td class="wrap-ok"><code>pg_restore</code>; selective, renameable, with <code>clean</code></td></tr>
+    <tr><td><em>no databases</em></td><td><code>pg_dumpall</code></td><td class="wrap-ok"><code>postgres/all.sql.gz</code>: plain SQL, gzipped</td><td class="wrap-ok"><code>psql</code>; the whole file, into an empty server</td></tr>
+    <tr><td><code>includeGlobals: true</code></td><td><code>pg_dumpall --globals-only</code></td><td class="wrap-ok"><code>postgres/globals.sql.gz</code>: roles and tablespaces</td><td class="wrap-ok">replayed first with <code>restoreGlobals</code></td></tr>
+  </tbody>
+</table></div>
+<p><strong>Use per-database backups unless you really need the whole server.</strong> The custom format is
+  compressed, can restore single databases under another name, and can drop existing objects first. A
+  <code>pg_dumpall</code> backup is plain SQL that can only be replayed whole.</p>
+<p>Each dump is a consistent snapshot of its database: <code>pg_dump</code> runs in one repeatable-read transaction
+  and doesn't block normal reads and writes.</p>
+
+<h2 id="backup">Backup<a class="anchor" href="#backup" aria-label="Link to this section">#</a></h2>
+<pre>apiVersion: planb.sina-devel.github.io/v1alpha1
+kind: Backup
+metadata:
+  name: app-2026-10-29
+  namespace: db
+spec:
+  storageLocation: default
+  ttl: 720h                       # default: --default-backup-ttl (720h)
+  postgres:
+    host: postgres.db.svc         # Service, hostname or IP
+    port: 5432                    # default
+    sslMode: prefer               # disable | allow | prefer | require | verify-ca | verify-full
+    credentials:
+      name: postgres-credentials
+      usernameKey: username       # default
+      passwordKey: password       # default
+    databases: [app, billing]
+    includeGlobals: true
+    extraArgs: [--exclude-table-data=audit_log]
+  job:
+    resources: { requests: { cpu: 500m, memory: 256Mi } }
+    activeDeadlineSeconds: 7200</pre>
+<h3 id="extra-args">Extra arguments<a class="anchor" href="#extra-args" aria-label="Link to this section">#</a></h3>
+<p><code>extraArgs</code> are appended to <code>pg_dump</code>, or to <code>pg_dumpall</code> for a full-server backup.
+  Useful ones:</p>
+<ul>
+  <li><code>--exclude-table-data=PATTERN</code>: keep the table definition but skip its rows.</li>
+  <li><code>--schema=NAME</code> / <code>--exclude-schema=NAME</code>: limit the dump to some schemas.</li>
+  <li><code>--no-owner</code>, <code>--no-privileges</code>: make the dump portable between servers with
+    different roles.</li>
+  <li><code>--compress=zstd:5</code>: a different compression method or level (PostgreSQL 16+ client).</li>
+</ul>
+<h3 id="permissions">Permissions<a class="anchor" href="#permissions" aria-label="Link to this section">#</a></h3>
+<p>The backup user needs <code>CONNECT</code> on each database and <code>SELECT</code> on everything in it, usually by
+  being the owner or a member of <code>pg_read_all_data</code> (PostgreSQL 14+). <code>includeGlobals</code> and
+  full-server backups read <code>pg_authid</code> for role passwords, so they need a superuser. On managed services
+  that hide passwords, add <code>extraArgs: [--no-role-passwords]</code>.</p>
+<h3 id="versions">Client version<a class="anchor" href="#versions" aria-label="Link to this section">#</a></h3>
+<p>The image ships the PostgreSQL 18 client tools. <code>pg_dump</code> can dump any server from 9.2 on, and dumps
+  restore into the same or a newer server. To use a different client, set <code>spec.job.image</code> on the Backup,
+  or <code>manager.agentImage</code> in the chart, to an image that contains both the planb binary and that client.</p>
+
+<h2 id="restore">Restore<a class="anchor" href="#restore" aria-label="Link to this section">#</a></h2>
+<pre>apiVersion: planb.sina-devel.github.io/v1alpha1
+kind: Restore
+metadata:
+  name: app-into-staging
+  namespace: db
+spec:
+  backupName: app-2026-10-29
+  postgres:
+    target:                       # default: the server the backup came from
+      host: postgres-staging.db.svc
+      credentials: { name: staging-credentials }
+    databases: [app]              # default: every database in the backup
+    databaseMapping: { app: app_copy }
+    createDatabase: true          # default
+    clean: false
+    restoreGlobals: false
+    extraArgs: [--no-owner]</pre>
+<div class="table-wrap"><table>
+  <thead><tr><th>Option</th><th>Effect</th></tr></thead>
+  <tbody>
+    <tr><td><code>target</code></td><td class="wrap-ok">Restore to another server. <code>sslMode</code> and <code>port</code> default as in a Backup.</td></tr>
+    <tr><td><code>databases</code></td><td class="wrap-ok">Restore only these. A name that isn't in the backup fails the Restore.</td></tr>
+    <tr><td><code>databaseMapping</code></td><td class="wrap-ok"><code>{source: target}</code>: restore a database under a different name.</td></tr>
+    <tr><td><code>createDatabase</code></td><td class="wrap-ok">Create each target database if it doesn't exist (default <code>true</code>).</td></tr>
+    <tr><td><code>clean</code></td><td class="wrap-ok"><code>pg_restore --clean --if-exists</code>: drop each object before recreating it. Needed to restore over an existing database.</td></tr>
+    <tr><td><code>restoreGlobals</code></td><td class="wrap-ok">Replay <code>globals.sql.gz</code> (roles, tablespaces) before the databases. Roles that already exist produce errors in the log, which are ignored.</td></tr>
+    <tr><td><code>extraArgs</code></td><td class="wrap-ok">Appended to <code>pg_restore</code> or <code>psql</code>, e.g. <code>--no-owner</code>, <code>--jobs=4</code>, <code>--section=data</code>.</td></tr>
+  </tbody>
+</table></div>
+<p><code>pg_restore</code> runs with <code>--exit-on-error</code>, so the first error stops the Restore and appears in
+  its status. Each database is restored in turn; databases restored before an error are left as they are.</p>
+
+<h3 id="patterns">Common patterns<a class="anchor" href="#patterns" aria-label="Link to this section">#</a></h3>
+<ul>
+  <li><strong>Check a backup without touching production:</strong> restore with
+    <code>databaseMapping: {app: app_verify}</code>, run your checks, then drop <code>app_verify</code>.</li>
+  <li><strong>Roll a database back:</strong> restore into the same name with <code>clean: true</code>. Stop writers
+    first; <code>clean</code> doesn't remove objects that were created after the backup.</li>
+  <li><strong>Refresh staging from production:</strong> restore with a <code>target</code> server and
+    <code>extraArgs: [--no-owner, --no-privileges]</code> when the roles differ.</li>
+</ul>
+
+<h2 id="full-server">Full-server restores<a class="anchor" href="#full-server" aria-label="Link to this section">#</a></h2>
+<p>A <code>pg_dumpall</code> backup is replayed with <code>psql</code> as it is: it creates roles and databases and
+  then loads them. Restore it into an <strong>empty</strong> server, for example a fresh one in a recovery
+  cluster. <code>databases</code> and <code>databaseMapping</code> are rejected for this kind of backup. Replaying
+  into a server that already has the same databases produces "already exists" errors, which <code>psql</code>
+  reports but which don't stop it.</p>
+<nav class="pager" aria-label="Previous and next page">
+<a href="storage-locations.html"><small>Previous</small>Storage locations</a>
+<a class="next" href="buckets.html"><small>Next</small>S3 buckets</a>
+</nav>
+</article></main>
+</div>
+<footer>
+  <div class="wrap">
+    <span>planb: backup and restore for Kubernetes data services</span>
+    <a href="https://github.com/sina-devel/planb/edit/main/docs/postgres.html">Edit this page on GitHub</a>
+  </div>
+</footer>
+<script>
+  // On narrow screens the menu starts collapsed.
+  if (window.matchMedia("(max-width: 860px)").matches) document.querySelector("aside.side details").removeAttribute("open");
+</script>
+</body>
+</html>

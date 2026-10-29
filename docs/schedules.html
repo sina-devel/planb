@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Schedules and retention · planb</title>
+<meta name="description" content="Create backups on a cron schedule, and control how long they're kept with keepLast, TTLs and deletion rules.">
+<link rel="icon" href="assets/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="assets/site.css">
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <a class="logo" href="./">plan<span>b</span></a>
+    <nav>
+      <a href="getting-started.html" class="active">Docs</a>
+      <a class="hide-sm" href="reference.html">API</a>
+      <a href="https://github.com/sina-devel/planb">GitHub</a>
+    </nav>
+  </div>
+</header>
+<div class="wrap docs">
+<aside class="side"><details open><summary>Documentation menu</summary>
+<h4>Start</h4><ul>
+<li><a href="getting-started.html">Getting started</a></li>
+<li><a href="concepts.html">Concepts</a></li>
+</ul>
+<h4>Guides</h4><ul>
+<li><a href="storage-locations.html">Storage locations</a></li>
+<li><a href="postgres.html">PostgreSQL</a></li>
+<li><a href="buckets.html">S3 buckets</a></li>
+<li><a href="schedules.html" aria-current="page">Schedules and retention</a></li>
+<li><a href="notifications.html">Notifications</a></li>
+<li><a href="reliability.html">Retries and reliability</a></li>
+<li><a href="disaster-recovery.html">Disaster recovery</a></li>
+<li><a href="ui.html">Web UI</a></li>
+</ul>
+<h4>Operate</h4><ul>
+<li><a href="installation.html">Installation and Helm</a></li>
+<li><a href="upgrading.html">Upgrading</a></li>
+<li><a href="troubleshooting.html">Troubleshooting</a></li>
+</ul>
+<h4>Reference</h4><ul>
+<li><a href="reference.html">API reference</a></li>
+<li><a href="development.html">Development</a></li>
+</ul></details></aside>
+<main><article>
+<h1>Schedules and retention</h1>
+<p class="lead">Create backups on a cron schedule, and control how long they're kept with keepLast, TTLs and deletion rules.</p>
+<h2 id="schedule">Schedules<a class="anchor" href="#schedule" aria-label="Link to this section">#</a></h2>
+<pre>apiVersion: planb.sina-devel.github.io/v1alpha1
+kind: Schedule
+metadata:
+  name: app-nightly
+  namespace: db
+spec:
+  schedule: "CRON_TZ=Europe/Berlin 0 3 * * *"
+  keepLast: 7
+  skipIfRunning: true             # default
+  paused: false
+  template:                       # any Backup spec
+    storageLocation: default
+    ttl: 720h
+    postgres:
+      host: postgres.db.svc
+      credentials: { name: postgres-credentials }
+      databases: [app]</pre>
+<p>At each scheduled time the operator creates a Backup named
+  <code>&lt;schedule&gt;-&lt;UTC time as YYYYMMDDHHMMSS&gt;</code>, for example
+  <code>app-nightly-20261029010000</code>, labelled <code>planb.sina-devel.github.io/schedule: app-nightly</code>.
+  The Backups are owned by nobody: deleting the Schedule leaves them, and their data, in place.</p>
+
+<h3 id="cron">Cron syntax<a class="anchor" href="#cron" aria-label="Link to this section">#</a></h3>
+<div class="table-wrap"><table>
+  <thead><tr><th>Expression</th><th>Runs</th></tr></thead>
+  <tbody>
+    <tr><td><code>0 3 * * *</code></td><td class="wrap-ok">03:00 UTC every day</td></tr>
+    <tr><td><code>CRON_TZ=Europe/Berlin 0 3 * * *</code></td><td class="wrap-ok">03:00 Berlin time, following daylight saving</td></tr>
+    <tr><td><code>*/15 * * * *</code></td><td class="wrap-ok">every 15 minutes</td></tr>
+    <tr><td><code>0 2 * * 0</code></td><td class="wrap-ok">02:00 UTC on Sundays</td></tr>
+    <tr><td><code>@daily</code>, <code>@hourly</code>, <code>@weekly</code></td><td class="wrap-ok">descriptors</td></tr>
+    <tr><td><code>@every 6h</code></td><td class="wrap-ok">every six hours</td></tr>
+  </tbody>
+</table></div>
+<p>An invalid expression puts the Schedule in <code>FailedValidation</code> with the parser error in
+  <code>status.message</code>. <code>status.nextScheduleTime</code> shows when the next backup is due.</p>
+
+<h3 id="behaviour">Behaviour<a class="anchor" href="#behaviour" aria-label="Link to this section">#</a></h3>
+<ul>
+  <li><strong><code>skipIfRunning</code></strong> (default <code>true</code>): a run is skipped while the previous
+    backup of this schedule is still <code>New</code> or <code>InProgress</code>. The skip is noted in
+    <code>status.message</code>.</li>
+  <li><strong>Missed runs</strong>: if the operator was down when one or more runs were due, it creates
+    <em>one</em> backup for the most recent missed time as soon as it's back. Earlier missed runs are skipped.</li>
+  <li><strong>Pause</strong> with <code>paused: true</code>, the UI's <strong>Pause</strong> button, or
+    <code>kubectl patch schedule app-nightly -n db --type=merge -p '{"spec":{"paused":true}}'</code>.</li>
+  <li><strong>Run now</strong>: the UI's <strong>Run now</strong> creates a Backup from the template straight away.
+    With kubectl, create a Backup with the same spec.</li>
+</ul>
+
+<h2 id="retention">Retention<a class="anchor" href="#retention" aria-label="Link to this section">#</a></h2>
+<p>Three mechanisms decide when a backup goes away. They work together; whichever comes first wins.</p>
+
+<h3 id="keep-last">keepLast<a class="anchor" href="#keep-last" aria-label="Link to this section">#</a></h3>
+<p>Each time the schedule is reconciled, at least once per run, it deletes its oldest <em>completed</em> backups
+  beyond <code>keepLast</code>, counted by creation time. Deleting them deletes their data. Failed and running
+  backups don't count and aren't deleted. Backups are matched by the schedule label, so backups that sync imports
+  from storage count too. <code>0</code> (the default) means "rely on the TTL only".</p>
+
+<h3 id="ttl">TTL<a class="anchor" href="#ttl" aria-label="Link to this section">#</a></h3>
+<p>Every Backup expires at <code>completionTimestamp + ttl</code>, shown in <code>status.expiration</code> and the
+  <code>EXPIRES</code> column. Then the Backup <em>and its data</em> are deleted.</p>
+<ul>
+  <li>The default comes from the operator's <code>--default-backup-ttl</code> (chart:
+    <code>manager.defaultBackupTTL</code>, default <code>720h</code> = 30 days).</li>
+  <li><code>ttl: 0s</code> keeps a backup forever, unless <code>keepLast</code> removes it.</li>
+  <li>Backups on <code>ReadOnly</code> locations are never garbage-collected.</li>
+</ul>
+
+<h3 id="deletion">Deleting a Backup<a class="anchor" href="#deletion" aria-label="Link to this section">#</a></h3>
+<p>Deleting a Backup deletes its data from the bucket: a finalizer removes the backup folder before the object goes
+  away, and the phase reads <code>Deleting</code> meanwhile. The data is <strong>kept</strong> when:</p>
+<ul>
+  <li>the Backup has the annotation <code>planb.sina-devel.github.io/retain-data: "true"</code>;</li>
+  <li>its namespace is being deleted, which protects against an accidental <code>kubectl delete ns</code>;</li>
+  <li>its storage location is <code>ReadOnly</code>, missing or being deleted;</li>
+  <li>the backup never started.</li>
+</ul>
+<pre># keep the data, drop the object
+kubectl annotate backup app-nightly-20261029010000 -n db planb.sina-devel.github.io/retain-data=true
+kubectl delete backup app-nightly-20261029010000 -n db</pre>
+<p>Data kept this way is imported again by the next <a href="storage-locations.html#sync">sync</a>, unless the
+  location's sync is off. To remove it later, delete the folder in the bucket, or let the re-imported Backup expire.</p>
+
+<h2 id="example-policy">Example: daily, weekly and monthly<a class="anchor" href="#example-policy" aria-label="Link to this section">#</a></h2>
+<p>Use one schedule per tier, each with its own TTL. A Notifier selector or a label on the template tells them
+  apart.</p>
+<pre>spec: { schedule: "0 3 * * *",  keepLast: 7,  template: { ttl: 192h,  ... } }   # daily, a week
+spec: { schedule: "0 4 * * 0",  keepLast: 5,  template: { ttl: 900h,  ... } }   # weekly, five weeks
+spec: { schedule: "0 5 1 * *",  keepLast: 12, template: { ttl: 8800h, ... } }   # monthly, a year</pre>
+<nav class="pager" aria-label="Previous and next page">
+<a href="buckets.html"><small>Previous</small>S3 buckets</a>
+<a class="next" href="notifications.html"><small>Next</small>Notifications</a>
+</nav>
+</article></main>
+</div>
+<footer>
+  <div class="wrap">
+    <span>planb: backup and restore for Kubernetes data services</span>
+    <a href="https://github.com/sina-devel/planb/edit/main/docs/schedules.html">Edit this page on GitHub</a>
+  </div>
+</footer>
+<script>
+  // On narrow screens the menu starts collapsed.
+  if (window.matchMedia("(max-width: 860px)").matches) document.querySelector("aside.side details").removeAttribute("open");
+</script>
+</body>
+</html>

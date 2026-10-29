@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Upgrading · planb</title>
+<meta name="description" content="How to upgrade planb, and what changed between versions, including the API group move in 0.3.0.">
+<link rel="icon" href="assets/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="assets/site.css">
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <a class="logo" href="./">plan<span>b</span></a>
+    <nav>
+      <a href="getting-started.html" class="active">Docs</a>
+      <a class="hide-sm" href="reference.html">API</a>
+      <a href="https://github.com/sina-devel/planb">GitHub</a>
+    </nav>
+  </div>
+</header>
+<div class="wrap docs">
+<aside class="side"><details open><summary>Documentation menu</summary>
+<h4>Start</h4><ul>
+<li><a href="getting-started.html">Getting started</a></li>
+<li><a href="concepts.html">Concepts</a></li>
+</ul>
+<h4>Guides</h4><ul>
+<li><a href="storage-locations.html">Storage locations</a></li>
+<li><a href="postgres.html">PostgreSQL</a></li>
+<li><a href="buckets.html">S3 buckets</a></li>
+<li><a href="schedules.html">Schedules and retention</a></li>
+<li><a href="notifications.html">Notifications</a></li>
+<li><a href="reliability.html">Retries and reliability</a></li>
+<li><a href="disaster-recovery.html">Disaster recovery</a></li>
+<li><a href="ui.html">Web UI</a></li>
+</ul>
+<h4>Operate</h4><ul>
+<li><a href="installation.html">Installation and Helm</a></li>
+<li><a href="upgrading.html" aria-current="page">Upgrading</a></li>
+<li><a href="troubleshooting.html">Troubleshooting</a></li>
+</ul>
+<h4>Reference</h4><ul>
+<li><a href="reference.html">API reference</a></li>
+<li><a href="development.html">Development</a></li>
+</ul></details></aside>
+<main><article>
+<h1>Upgrading</h1>
+<p class="lead">How to upgrade planb, and what changed between versions, including the API group move in 0.3.0.</p>
+<h2 id="procedure">Upgrade procedure<a class="anchor" href="#procedure" aria-label="Link to this section">#</a></h2>
+<p>Helm installs CRDs on the first install but never upgrades them. Apply the new CRDs first, then upgrade the
+  release:</p>
+<pre>git pull   # or check out the release tag
+kubectl apply --server-side -f charts/planb/crds
+helm upgrade planb charts/planb -n planb-system --reuse-values</pre>
+<p>Running backups and restores aren't interrupted: they run in their own Jobs, and the new operator picks up their
+  results.</p>
+
+<h2 id="v0-3-0">0.3.0<a class="anchor" href="#v0-3-0" aria-label="Link to this section">#</a></h2>
+<h3 id="v0-3-0-changes">Changes<a class="anchor" href="#v0-3-0-changes" aria-label="Link to this section">#</a></h3>
+<ul>
+  <li><strong>API group renamed</strong> from <code>planb.io</code> to <code>planb.sina-devel.github.io</code>,
+    including every label, annotation and finalizer key. planb doesn't own <code>planb.io</code>, and a group
+    name should be a domain you control, so that no other project's CRDs can collide with it.</li>
+  <li><strong>Prune on bucket restore</strong>: <code>spec.bucket.prune</code> and <code>status.deletedItems</code>
+    (<a href="buckets.html#prune">details</a>).</li>
+  <li><strong>Retries with backoff</strong>: <code>spec.job.retry</code>, resumable downloads and listings, longer
+    S3 request backoff, PostgreSQL-aware retry rules (<a href="reliability.html">details</a>).</li>
+  <li>Bucket backups of the storage location's own bucket leave planb's backups out.</li>
+  <li>An upload failure during a dump now reports the S3 error instead of "pg_dump: signal: killed".</li>
+</ul>
+<h3 id="migrate-group">Migrating from planb.io<a class="anchor" href="#migrate-group" aria-label="Link to this section">#</a></h3>
+<p>The new CRDs are separate resources. The old objects aren't converted, and the new operator ignores them. Your
+  backup <em>data</em> stays where it is, and the new version imports it through sync, because
+  <code>planb-backup.json</code> doesn't depend on the group.</p>
+<ol>
+  <li><strong>Export what you created by hand</strong>, so you can re-apply it under the new group:
+<pre>for k in backupstoragelocations schedules notifiers; do
+  kubectl get $k.planb.io -A -o yaml &gt; old-$k.yaml
+done</pre></li>
+  <li><strong>Stop the old operator and protect the data.</strong> Remove the finalizers so deleting the old objects
+    can't delete any data:
+<pre>kubectl scale deploy/planb -n planb-system --replicas=0
+kubectl get backups.planb.io -A \
+  -o jsonpath='{range .items[*]}{.metadata.namespace}{" "}{.metadata.name}{"\n"}{end}' |
+  while read -r ns name; do
+    kubectl patch backups.planb.io "$name" -n "$ns" --type=merge -p '{"metadata":{"finalizers":null}}'
+  done</pre></li>
+  <li><strong>Install 0.3.0</strong> with the <a href="#procedure">procedure above</a>. This adds the new CRDs next
+    to the old ones.</li>
+  <li><strong>Re-apply</strong> storage locations, schedules and notifiers, with
+    <code>apiVersion: planb.sina-devel.github.io/v1alpha1</code> and renamed label and annotation keys:
+<pre>sed 's#planb\.io/#planb.sina-devel.github.io/#g' old-backupstoragelocations.yaml old-schedules.yaml old-notifiers.yaml \
+  | grep -v -e 'resourceVersion:' -e 'uid:' -e 'creationTimestamp:' | kubectl apply -f -</pre>
+    Within one <code>syncPeriod</code>, every completed backup reappears as a Backup under the new group.</li>
+  <li><strong>Remove the old CRDs</strong> when you're happy. Their objects no longer have finalizers, so nothing
+    touches the data:
+<pre>kubectl delete crd backups.planb.io restores.planb.io schedules.planb.io \
+  backupstoragelocations.planb.io notifiers.planb.io</pre></li>
+</ol>
+<div class="callout"><strong>Label selectors</strong>
+  <p>Notifier selectors and your own tooling that use <code>planb.io/schedule</code> or other
+    <code>planb.io/</code> keys need the new prefix.</p></div>
+
+<h2 id="v0-2-0">0.2.0<a class="anchor" href="#v0-2-0" aria-label="Link to this section">#</a></h2>
+<ul>
+  <li>Notifiers: Telegram, Slack, webhook and email.</li>
+  <li>UI forms to create storage locations, schedules, notifiers and restores, plus filters and pagination.</li>
+  <li><code>hack/demo/</code> for trying planb in a local cluster.</li>
+</ul>
+<nav class="pager" aria-label="Previous and next page">
+<a href="installation.html"><small>Previous</small>Installation and Helm</a>
+<a class="next" href="troubleshooting.html"><small>Next</small>Troubleshooting</a>
+</nav>
+</article></main>
+</div>
+<footer>
+  <div class="wrap">
+    <span>planb: backup and restore for Kubernetes data services</span>
+    <a href="https://github.com/sina-devel/planb/edit/main/docs/upgrading.html">Edit this page on GitHub</a>
+  </div>
+</footer>
+<script>
+  // On narrow screens the menu starts collapsed.
+  if (window.matchMedia("(max-width: 860px)").matches) document.querySelector("aside.side details").removeAttribute("open");
+</script>
+</body>
+</html>

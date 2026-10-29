@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Troubleshooting · planb</title>
+<meta name="description" content="Where to look when something goes wrong, and the fixes for the errors people hit most.">
+<link rel="icon" href="assets/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="assets/site.css">
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <a class="logo" href="./">plan<span>b</span></a>
+    <nav>
+      <a href="getting-started.html" class="active">Docs</a>
+      <a class="hide-sm" href="reference.html">API</a>
+      <a href="https://github.com/sina-devel/planb">GitHub</a>
+    </nav>
+  </div>
+</header>
+<div class="wrap docs">
+<aside class="side"><details open><summary>Documentation menu</summary>
+<h4>Start</h4><ul>
+<li><a href="getting-started.html">Getting started</a></li>
+<li><a href="concepts.html">Concepts</a></li>
+</ul>
+<h4>Guides</h4><ul>
+<li><a href="storage-locations.html">Storage locations</a></li>
+<li><a href="postgres.html">PostgreSQL</a></li>
+<li><a href="buckets.html">S3 buckets</a></li>
+<li><a href="schedules.html">Schedules and retention</a></li>
+<li><a href="notifications.html">Notifications</a></li>
+<li><a href="reliability.html">Retries and reliability</a></li>
+<li><a href="disaster-recovery.html">Disaster recovery</a></li>
+<li><a href="ui.html">Web UI</a></li>
+</ul>
+<h4>Operate</h4><ul>
+<li><a href="installation.html">Installation and Helm</a></li>
+<li><a href="upgrading.html">Upgrading</a></li>
+<li><a href="troubleshooting.html" aria-current="page">Troubleshooting</a></li>
+</ul>
+<h4>Reference</h4><ul>
+<li><a href="reference.html">API reference</a></li>
+<li><a href="development.html">Development</a></li>
+</ul></details></aside>
+<main><article>
+<h1>Troubleshooting</h1>
+<p class="lead">Where to look when something goes wrong, and the fixes for the errors people hit most.</p>
+<h2 id="where">Where to look<a class="anchor" href="#where" aria-label="Link to this section">#</a></h2>
+<ol>
+  <li><strong>Status:</strong> <code>kubectl get backups,restores -n db</code>, then
+    <code>kubectl get backup NAME -n db -o jsonpath='{.status.message}'</code>. The message holds the agent's
+    error.</li>
+  <li><strong>Events:</strong> <code>kubectl describe backup NAME -n db</code> shows each step: job created,
+    completed, failed, expired, deleted.</li>
+  <li><strong>Agent logs:</strong> <code>kubectl logs -n db job/planb-backup-NAME</code> (or
+    <code>planb-restore-NAME</code>). Jobs are kept for <code>manager.jobTTLSeconds</code> (a day by default). The
+    UI shows the same logs.</li>
+  <li><strong>Operator logs:</strong> <code>kubectl logs -n planb-system deploy/planb</code>. Set
+    <code>manager.logLevel=debug</code> for more.</li>
+</ol>
+
+<h2 id="common">Common problems<a class="anchor" href="#common" aria-label="Link to this section">#</a></h2>
+<h3 id="unavailable">Storage location stays Unavailable<a class="anchor" href="#unavailable" aria-label="Link to this section">#</a></h3>
+<ul>
+  <li><code>bucket "x" does not exist</code>: create the bucket; planb never creates buckets.</li>
+  <li><code>The Access Key Id you provided does not exist</code> or <code>SignatureDoesNotMatch</code>: wrong key, or
+    the wrong <code>accessKeyIdKey</code>/<code>secretAccessKeyKey</code> in the Secret reference.</li>
+  <li><code>http: server gave HTTP response to HTTPS client</code>: the endpoint speaks plain HTTP; set
+    <code>insecure: true</code>.</li>
+  <li><code>x509: certificate signed by unknown authority</code>: a self-signed endpoint; use a trusted certificate or
+    <code>skipTLSVerify: true</code>.</li>
+  <li><code>The authorization header is malformed; the region 'us-east-1' is wrong</code>: set <code>region</code>.</li>
+  <li><code>dial tcp ... i/o timeout</code>: a NetworkPolicy or firewall blocks the operator or the Jobs. Both need
+    to reach the endpoint.</li>
+</ul>
+<h3 id="pg-auth">pg_dump: password authentication failed / no pg_hba.conf entry<a class="anchor" href="#pg-auth" aria-label="Link to this section">#</a></h3>
+<p>Check the credentials Secret and its <code>usernameKey</code>/<code>passwordKey</code>. The Job connects from the
+  Pod network of the Backup's namespace, so <code>pg_hba.conf</code> must allow that CIDR. With
+  <code>sslMode: require</code> or stricter, the server must offer TLS.</p>
+<h3 id="pg-version">pg_dump: server version mismatch<a class="anchor" href="#pg-version" aria-label="Link to this section">#</a></h3>
+<p>The client must be at least as new as the server. The image ships PostgreSQL 18 tools. For a newer server, build
+  an agent image with a newer client and set <code>spec.job.image</code>.</p>
+<h3 id="pg-permission">pg_dump: permission denied for table ...<a class="anchor" href="#pg-permission" aria-label="Link to this section">#</a></h3>
+<p>The backup role must be able to read everything; see
+  <a href="postgres.html#permissions">permissions</a>. Exclude tables you can't read with
+  <code>extraArgs: [--exclude-table=NAME]</code>.</p>
+<h3 id="restore-exists">pg_restore: relation ... already exists<a class="anchor" href="#restore-exists" aria-label="Link to this section">#</a></h3>
+<p>The target database isn't empty. Restore with <code>clean: true</code>, or into a new name with
+  <code>databaseMapping</code>.</p>
+<h3 id="full-restore">"backup is a full pg_dumpall dump: databases/databaseMapping are not supported"<a class="anchor" href="#full-restore" aria-label="Link to this section">#</a></h3>
+<p>The backup was taken without <code>databases</code>. Restore it whole into an empty server, or take per-database
+  backups in future.</p>
+<h3 id="readonly">Backup failed: StorageLocationReadOnly<a class="anchor" href="#readonly" aria-label="Link to this section">#</a></h3>
+<p>The location has <code>accessMode: ReadOnly</code>. Use another location or change the mode.</p>
+<h3 id="stuck-deleting">Backup stuck in Deleting<a class="anchor" href="#stuck-deleting" aria-label="Link to this section">#</a></h3>
+<p>The finalizer is trying to delete the data and the bucket is unreachable or the key can't delete. The operator
+  keeps retrying; the reason is in the events. To give up on the data, remove the finalizer:</p>
+<pre>kubectl patch backup NAME -n db --type=merge -p '{"metadata":{"finalizers":null}}'</pre>
+<h3 id="oom">Job OOMKilled<a class="anchor" href="#oom" aria-label="Link to this section">#</a></h3>
+<p>Each concurrent multipart upload buffers one part, 64&nbsp;MiB by default. Give the Job more memory with
+  <code>spec.job.resources</code>, or lower <code>PLANB_PART_SIZE_MB</code>. Pruning very large buckets also needs
+  memory for the key list.</p>
+<h3 id="retries">Backups take long and the logs show "retrying after error"<a class="anchor" href="#retries" aria-label="Link to this section">#</a></h3>
+<p>The provider throttles or the network is unstable. planb is riding it out; see
+  <a href="reliability.html">Retries and reliability</a>. If it keeps happening, lower the load (fewer parallel
+  schedules) or raise <code>spec.job.retry.maxBackoff</code>.</p>
+<h3 id="no-sync">Backups don't appear in a new cluster<a class="anchor" href="#no-sync" aria-label="Link to this section">#</a></h3>
+<ul>
+  <li>The location must use the same bucket <em>and</em> prefix as the cluster that wrote them.</li>
+  <li>Only completed backups with a <code>planb-backup.json</code> are imported. Expired ones are skipped unless the
+    location is <code>ReadOnly</code>.</li>
+  <li>A Backup with the same name already exists in the namespace.</li>
+  <li><code>syncPeriod: 0s</code> switches sync off.</li>
+</ul>
+<h3 id="notify">Notifier is Failed<a class="anchor" href="#notify" aria-label="Link to this section">#</a></h3>
+<p><code>kubectl describe notifier NAME</code> shows the HTTP or SMTP error. Telegram often needs a proxy; see
+  <a href="notifications.html#proxy">Proxies</a>. Send a test after fixing it.</p>
+<nav class="pager" aria-label="Previous and next page">
+<a href="upgrading.html"><small>Previous</small>Upgrading</a>
+<a class="next" href="reference.html"><small>Next</small>API reference</a>
+</nav>
+</article></main>
+</div>
+<footer>
+  <div class="wrap">
+    <span>planb: backup and restore for Kubernetes data services</span>
+    <a href="https://github.com/sina-devel/planb/edit/main/docs/troubleshooting.html">Edit this page on GitHub</a>
+  </div>
+</footer>
+<script>
+  // On narrow screens the menu starts collapsed.
+  if (window.matchMedia("(max-width: 860px)").matches) document.querySelector("aside.side details").removeAttribute("open");
+</script>
+</body>
+</html>

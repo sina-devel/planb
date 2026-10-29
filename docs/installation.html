@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Installation and Helm · planb</title>
+<meta name="description" content="Every setting of the Helm chart and the operator, and how to run planb with your own images, in one namespace or behind a proxy.">
+<link rel="icon" href="assets/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="assets/site.css">
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <a class="logo" href="./">plan<span>b</span></a>
+    <nav>
+      <a href="getting-started.html" class="active">Docs</a>
+      <a class="hide-sm" href="reference.html">API</a>
+      <a href="https://github.com/sina-devel/planb">GitHub</a>
+    </nav>
+  </div>
+</header>
+<div class="wrap docs">
+<aside class="side"><details open><summary>Documentation menu</summary>
+<h4>Start</h4><ul>
+<li><a href="getting-started.html">Getting started</a></li>
+<li><a href="concepts.html">Concepts</a></li>
+</ul>
+<h4>Guides</h4><ul>
+<li><a href="storage-locations.html">Storage locations</a></li>
+<li><a href="postgres.html">PostgreSQL</a></li>
+<li><a href="buckets.html">S3 buckets</a></li>
+<li><a href="schedules.html">Schedules and retention</a></li>
+<li><a href="notifications.html">Notifications</a></li>
+<li><a href="reliability.html">Retries and reliability</a></li>
+<li><a href="disaster-recovery.html">Disaster recovery</a></li>
+<li><a href="ui.html">Web UI</a></li>
+</ul>
+<h4>Operate</h4><ul>
+<li><a href="installation.html" aria-current="page">Installation and Helm</a></li>
+<li><a href="upgrading.html">Upgrading</a></li>
+<li><a href="troubleshooting.html">Troubleshooting</a></li>
+</ul>
+<h4>Reference</h4><ul>
+<li><a href="reference.html">API reference</a></li>
+<li><a href="development.html">Development</a></li>
+</ul></details></aside>
+<main><article>
+<h1>Installation and Helm</h1>
+<p class="lead">Every setting of the Helm chart and the operator, and how to run planb with your own images, in one namespace or behind a proxy.</p>
+<h2 id="install">Install<a class="anchor" href="#install" aria-label="Link to this section">#</a></h2>
+<pre>git clone https://github.com/sina-devel/planb && cd planb
+helm upgrade --install planb charts/planb -n planb-system --create-namespace -f my-values.yaml</pre>
+<p>The chart installs the five CRDs from <code>charts/planb/crds/</code>, the operator Deployment with its
+  ServiceAccount and ClusterRole and, when enabled, the UI.</p>
+<h3 id="images">Images<a class="anchor" href="#images" aria-label="Link to this section">#</a></h3>
+<p>Multi-arch images (<code>linux/amd64</code>, <code>linux/arm64</code>) are published to
+  <code>ghcr.io/sina-devel/planb</code>:</p>
+<div class="table-wrap"><table>
+  <thead><tr><th>Tag</th><th>Built from</th></tr></thead>
+  <tbody>
+    <tr><td><code>X.Y.Z</code>, <code>X.Y</code></td><td class="wrap-ok">release tags <code>vX.Y.Z</code>. The chart's <code>appVersion</code> is the default tag.</td></tr>
+    <tr><td><code>main</code></td><td class="wrap-ok">the latest commit on <code>main</code></td></tr>
+    <tr><td><code>sha-&lt;commit&gt;</code></td><td class="wrap-ok">every commit</td></tr>
+  </tbody>
+</table></div>
+<p>The same image runs the operator, the agent in each Job, and the UI. It's based on
+  <code>postgres:18-alpine</code> for the client tools and runs as UID 65532.</p>
+<p>To build your own: <code>make docker-build docker-push IMG=registry.example.com/planb:dev</code>, then
+  <code>--set image.repository=registry.example.com/planb --set image.tag=dev</code>.</p>
+
+<h2 id="values">Chart values<a class="anchor" href="#values" aria-label="Link to this section">#</a></h2>
+<div class="table-wrap"><table>
+  <thead><tr><th>Value</th><th>Default</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td><code>image.repository</code></td><td><code>ghcr.io/sina-devel/planb</code></td><td class="wrap-ok">Image for the operator, the agent and the UI.</td></tr>
+    <tr><td><code>image.tag</code></td><td>chart <code>appVersion</code></td><td class="wrap-ok"></td></tr>
+    <tr><td><code>image.pullPolicy</code></td><td><code>IfNotPresent</code></td><td class="wrap-ok">Also used for the Jobs.</td></tr>
+    <tr><td><code>imagePullSecrets</code></td><td><code>[]</code></td><td class="wrap-ok">For private registries.</td></tr>
+    <tr><td><code>manager.replicas</code></td><td><code>1</code></td><td class="wrap-ok">More than one enables leader election.</td></tr>
+    <tr><td><code>manager.watchNamespace</code></td><td><code>""</code></td><td class="wrap-ok">Only watch this namespace. Empty watches all.</td></tr>
+    <tr><td><code>manager.defaultBackupTTL</code></td><td><code>720h</code></td><td class="wrap-ok">TTL for Backups without <code>spec.ttl</code>. <code>0s</code> keeps them forever.</td></tr>
+    <tr><td><code>manager.jobTTLSeconds</code></td><td><code>86400</code></td><td class="wrap-ok">How long finished Jobs, and their logs, are kept.</td></tr>
+    <tr><td><code>manager.agentImage</code></td><td><code>""</code></td><td class="wrap-ok">Image for the Jobs, if different from the operator's.</td></tr>
+    <tr><td><code>manager.logLevel</code></td><td><code>info</code></td><td class="wrap-ok"><code>debug</code>, <code>info</code> or <code>error</code>.</td></tr>
+    <tr><td><code>manager.clusterName</code></td><td><code>""</code></td><td class="wrap-ok">Shown in notifications.</td></tr>
+    <tr><td><code>manager.extraEnv</code></td><td><code>[]</code></td><td class="wrap-ok">Extra environment variables, such as a proxy.</td></tr>
+    <tr><td><code>manager.resources</code></td><td>50m / 64Mi, limit 256Mi</td><td class="wrap-ok"></td></tr>
+    <tr><td><code>manager.nodeSelector</code>, <code>.tolerations</code>, <code>.affinity</code></td><td>empty</td><td class="wrap-ok"></td></tr>
+    <tr><td><code>ui.*</code></td><td></td><td class="wrap-ok">See <a href="ui.html#settings">Web UI</a>.</td></tr>
+    <tr><td><code>podSecurityContext</code>, <code>securityContext</code></td><td>non-root, read-only, no capabilities</td><td class="wrap-ok">For the operator and UI Pods. Jobs always use the same hardened settings.</td></tr>
+  </tbody>
+</table></div>
+
+<h2 id="flags">Operator flags<a class="anchor" href="#flags" aria-label="Link to this section">#</a></h2>
+<p>The chart sets these from the values above. They matter only if you run the binary yourself
+  (<code>planb manager</code>, or <code>make run</code> during development).</p>
+<div class="table-wrap"><table>
+  <thead><tr><th>Flag</th><th>Environment</th><th>Default</th></tr></thead>
+  <tbody>
+    <tr><td><code>--watch-namespace</code></td><td><code>WATCH_NAMESPACE</code></td><td>all</td></tr>
+    <tr><td><code>--agent-image</code></td><td><code>PLANB_AGENT_IMAGE</code></td><td>set by the chart</td></tr>
+    <tr><td><code>--agent-image-pull-policy</code></td><td><code>PLANB_AGENT_IMAGE_PULL_POLICY</code></td><td><code>IfNotPresent</code></td></tr>
+    <tr><td><code>--default-backup-ttl</code></td><td></td><td><code>720h</code></td></tr>
+    <tr><td><code>--job-ttl-seconds</code></td><td></td><td><code>86400</code></td></tr>
+    <tr><td><code>--cluster-name</code></td><td><code>PLANB_CLUSTER_NAME</code></td><td></td></tr>
+    <tr><td><code>--leader-elect</code></td><td></td><td><code>false</code></td></tr>
+    <tr><td><code>--metrics-bind-address</code></td><td></td><td><code>:8080</code></td></tr>
+    <tr><td><code>--health-probe-bind-address</code></td><td></td><td><code>:8081</code></td></tr>
+  </tbody>
+</table></div>
+<p>The UI (<code>planb ui</code>) takes <code>--bind-address</code> (<code>PLANB_UI_ADDR</code>, default
+  <code>:8090</code>), <code>--namespace</code> (<code>PLANB_UI_NAMESPACE</code>) and <code>--read-only</code>
+  (<code>PLANB_UI_READ_ONLY</code>). The agent reads <code>PLANB_PART_SIZE_MB</code> for the multipart chunk size.</p>
+
+<h2 id="single-namespace">Single-namespace install<a class="anchor" href="#single-namespace" aria-label="Link to this section">#</a></h2>
+<pre>helm upgrade --install planb charts/planb -n db --set manager.watchNamespace=db --set ui.namespace=db</pre>
+<p>The operator then only sees resources in <code>db</code>. Its RBAC is still a ClusterRole, because the CRDs are
+  cluster-scoped.</p>
+
+<h2 id="uninstall">Uninstall<a class="anchor" href="#uninstall" aria-label="Link to this section">#</a></h2>
+<pre>helm uninstall planb -n planb-system</pre>
+<p>Helm keeps the CRDs, so your Backup objects survive an uninstall and reinstall. Removing everything:</p>
+<div class="callout warn"><strong>Deleting the CRDs deletes every planb object</strong>
+  <p>If the operator is still running, the Backups' finalizers delete their data from the buckets. To keep the data,
+    uninstall the operator first and remove the finalizers, or annotate every Backup with
+    <code>planb.sina-devel.github.io/retain-data=true</code> before deleting anything.</p></div>
+<pre>kubectl annotate backups --all -A planb.sina-devel.github.io/retain-data=true
+helm uninstall planb -n planb-system
+kubectl get crd -o name | grep planb.sina-devel.github.io | xargs kubectl delete</pre>
+<nav class="pager" aria-label="Previous and next page">
+<a href="ui.html"><small>Previous</small>Web UI</a>
+<a class="next" href="upgrading.html"><small>Next</small>Upgrading</a>
+</nav>
+</article></main>
+</div>
+<footer>
+  <div class="wrap">
+    <span>planb: backup and restore for Kubernetes data services</span>
+    <a href="https://github.com/sina-devel/planb/edit/main/docs/installation.html">Edit this page on GitHub</a>
+  </div>
+</footer>
+<script>
+  // On narrow screens the menu starts collapsed.
+  if (window.matchMedia("(max-width: 860px)").matches) document.querySelector("aside.side details").removeAttribute("open");
+</script>
+</body>
+</html>
