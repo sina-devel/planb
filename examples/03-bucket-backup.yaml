@@ -8,7 +8,7 @@ stringData:
   secretKey: CHANGE_ME
 ---
 # Copies every object under uploads/ of the "media" bucket into the storage location.
-apiVersion: planb.io/v1alpha1
+apiVersion: planb.sina-devel.github.io/v1alpha1
 kind: Backup
 metadata:
   name: media-manual-1

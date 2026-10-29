@@ -125,7 +125,7 @@ func (r *RestoreReconciler) start(ctx context.Context, rs *planbv1.Restore) erro
 		if opts.Target != nil {
 			target = opts.Target
 		}
-		t.Bucket = &task.Bucket{S3: storageConfig(target), Overwrite: ptr.Deref(opts.Overwrite, true)}
+		t.Bucket = &task.Bucket{S3: storageConfig(target), Overwrite: ptr.Deref(opts.Overwrite, true), Prune: opts.Prune}
 		env = append(env, s3CredEnv(target.Credentials, task.EnvBucketAccess, task.EnvBucketSecret)...)
 	default:
 		return r.invalid(ctx, rs, "backup %q has no source", b.Name)
@@ -167,6 +167,7 @@ func (r *RestoreReconciler) track(ctx context.Context, rs *planbv1.Restore) erro
 	}
 	rs.Status.SizeBytes = res.SizeBytes
 	rs.Status.Items = res.Items
+	rs.Status.DeletedItems = res.Deleted
 	if state == jobFailed {
 		msg := res.Error
 		if msg == "" {
@@ -174,8 +175,11 @@ func (r *RestoreReconciler) track(ctx context.Context, rs *planbv1.Restore) erro
 		}
 		return r.finish(ctx, rs, planbv1.RestorePhaseFailed, "RestoreFailed", msg)
 	}
-	return r.finish(ctx, rs, planbv1.RestorePhaseCompleted, "Completed",
-		fmt.Sprintf("restore completed: %d items, %d bytes", res.Items, res.SizeBytes))
+	msg := fmt.Sprintf("restore completed: %d items, %d bytes", res.Items, res.SizeBytes)
+	if res.Deleted > 0 {
+		msg += fmt.Sprintf(", %d extra objects deleted", res.Deleted)
+	}
+	return r.finish(ctx, rs, planbv1.RestorePhaseCompleted, "Completed", msg)
 }
 
 // SetupWithManager sets up the controller with the Manager.

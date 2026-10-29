@@ -39,6 +39,11 @@ type BucketRestoreOptions struct {
 	// +kubebuilder:default=true
 	// +optional
 	Overwrite *bool `json:"overwrite,omitempty"`
+	// Prune deletes objects under the target prefix that are not in the backup, so the target matches the
+	// backup exactly. It runs only after every object was copied. Backups of planb itself are never deleted,
+	// even when the target is the storage location's bucket.
+	// +optional
+	Prune bool `json:"prune,omitempty"`
 }
 
 // RestoreSpec defines the desired state of Restore.
@@ -78,6 +83,9 @@ type RestoreStatus struct {
 	SizeBytes int64 `json:"sizeBytes,omitempty"`
 	// +optional
 	Items int64 `json:"items,omitempty"`
+	// DeletedItems is the number of objects removed by spec.bucket.prune.
+	// +optional
+	DeletedItems int64 `json:"deletedItems,omitempty"`
 	// +optional
 	JobName string `json:"jobName,omitempty"`
 }

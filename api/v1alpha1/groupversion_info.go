@@ -1,6 +1,6 @@
 // Package v1alpha1 contains API Schema definitions for the planb v1alpha1 API group.
 // +kubebuilder:object:generate=true
-// +groupName=planb.io
+// +groupName=planb.sina-devel.github.io
 package v1alpha1
 
 import (
@@ -11,7 +11,7 @@ import (
 
 var (
 	// GroupVersion is group version used to register these objects.
-	GroupVersion = schema.GroupVersion{Group: "planb.io", Version: "v1alpha1"}
+	GroupVersion = schema.GroupVersion{Group: "planb.sina-devel.github.io", Version: "v1alpha1"}
 
 	// SchemeBuilder is used to add go types to the GroupVersionKind scheme.
 	SchemeBuilder = runtime.NewSchemeBuilder(addKnownTypes)
@@ -35,20 +35,20 @@ func addKnownTypes(s *runtime.Scheme) error {
 
 const (
 	// FinalizerName is set on Backups so their data is removed from storage on deletion.
-	FinalizerName = "planb.io/backup-data"
+	FinalizerName = "planb.sina-devel.github.io/backup-data"
 
-	LabelStorageLocation = "planb.io/storage-location"
-	LabelSchedule        = "planb.io/schedule"
-	LabelBackup          = "planb.io/backup"
-	LabelRestore         = "planb.io/restore"
+	LabelStorageLocation = "planb.sina-devel.github.io/storage-location"
+	LabelSchedule        = "planb.sina-devel.github.io/schedule"
+	LabelBackup          = "planb.sina-devel.github.io/backup"
+	LabelRestore         = "planb.sina-devel.github.io/restore"
 	LabelManagedBy       = "app.kubernetes.io/managed-by"
 
 	// AnnotationSynced marks a Backup that was created by syncing from object storage.
-	AnnotationSynced = "planb.io/synced-from-storage"
+	AnnotationSynced = "planb.sina-devel.github.io/synced-from-storage"
 	// AnnotationRetainData keeps the backup data in storage when the Backup object is deleted.
-	AnnotationRetainData = "planb.io/retain-data"
+	AnnotationRetainData = "planb.sina-devel.github.io/retain-data"
 	// AnnotationNotified lists the Notifiers that were told about a finished Backup or Restore.
-	AnnotationNotified = "planb.io/notified"
+	AnnotationNotified = "planb.sina-devel.github.io/notified"
 	// AnnotationTest on a Notifier sends a test message whenever its value changes.
-	AnnotationTest = "planb.io/test"
+	AnnotationTest = "planb.sina-devel.github.io/test"
 )

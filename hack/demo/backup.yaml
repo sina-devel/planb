@@ -1,4 +1,4 @@
-apiVersion: planb.io/v1alpha1
+apiVersion: planb.sina-devel.github.io/v1alpha1
 kind: Backup
 metadata:
   name: app-1
@@ -12,7 +12,7 @@ spec:
     databases: [app]
     includeGlobals: true
 ---
-apiVersion: planb.io/v1alpha1
+apiVersion: planb.sina-devel.github.io/v1alpha1
 kind: Backup
 metadata:
   name: media-1

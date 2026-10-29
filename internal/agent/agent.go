@@ -13,13 +13,97 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"time"
 
+	"github.com/sina-devel/planb/internal/retry"
 	"github.com/sina-devel/planb/internal/storage"
 	"github.com/sina-devel/planb/internal/task"
 )
 
 // maxTerminationMessage is the Kubernetes limit for a container termination message.
 const maxTerminationMessage = 4096
+
+// Backoff between retries of a single S3 request inside minio-go (10 tries). Operations that still fail are
+// retried by the task's retry policy on top.
+const (
+	requestRetryUnit = 500 * time.Millisecond
+	requestRetryCap  = 15 * time.Second
+)
+
+// retryPolicy returns the task's retry policy with defaults filled in.
+func retryPolicy(t *task.Task) retry.Policy {
+	p := retry.Policy{Attempts: t.Retry.Attempts, InitialBackoff: t.Retry.InitialBackoff, MaxBackoff: t.Retry.MaxBackoff}
+	if p.Attempts <= 0 {
+		p.Attempts = retry.DefaultAttempts
+	}
+	if p.InitialBackoff <= 0 {
+		p.InitialBackoff = retry.DefaultInitialBackoff
+	}
+	if p.MaxBackoff <= 0 {
+		p.MaxBackoff = retry.DefaultMaxBackoff
+	}
+	return p
+}
+
+// retryOp runs fn under the task's retry policy.
+func retryOp(ctx context.Context, t *task.Task, log *slog.Logger, what string, retryable func(error) bool, fn func() error) error {
+	return retry.Do(ctx, retryPolicy(t), log, what, retryable, fn)
+}
+
+// toolError is a failed run of a PostgreSQL client tool.
+type toolError struct {
+	tool, stderr string
+	err          error
+}
+
+func (e *toolError) Error() string { return fmt.Sprintf("%s failed: %v: %s", e.tool, e.err, e.stderr) }
+func (e *toolError) Unwrap() error { return e.err }
+
+// PostgreSQL client messages (lower case) for failures to open a connection. Nothing has been changed on the
+// server yet, so the step can always run again.
+var pgConnectErrors = []string{
+	"connection refused", "connection timed out", "timeout expired", "connection reset",
+	"could not translate host name", "name or service not known", "temporary failure in name resolution",
+	"no route to host", "network is unreachable",
+	"the database system is starting up", "the database system is shutting down",
+	"the database system is in recovery mode", "the database system is not yet accepting connections",
+	"too many clients", "remaining connection slots are reserved",
+}
+
+// PostgreSQL client messages (lower case) for a connection lost part way through.
+var pgSessionErrors = []string{
+	"server closed the connection unexpectedly", "connection reset by peer", "could not receive data from server",
+	"could not send data to server", "ssl syscall error", "ssl connection has been closed unexpectedly",
+	"terminating connection due to administrator command", "no connection to the server",
+	"canceling statement due to conflict with recovery",
+}
+
+// transient returns the retry check for a step. S3 errors are judged by storage.IsRetryable. For PostgreSQL,
+// connectOnly limits retries to failures to connect, for steps that are not safe to repeat once they started.
+func transient(connectOnly bool) func(error) bool {
+	return func(err error) bool {
+		var te *toolError
+		if !errors.As(err, &te) {
+			return storage.IsRetryable(err)
+		}
+		s := strings.ToLower(te.stderr)
+		connecting := strings.Contains(s, "could not connect to server") || strings.Contains(s, "could not translate host name") ||
+			(strings.Contains(s, "connection to server") && strings.Contains(s, "failed:"))
+		if connecting && containsAny(s, pgConnectErrors) {
+			return true
+		}
+		return !connectOnly && containsAny(s, pgSessionErrors)
+	}
+}
+
+func containsAny(s string, subs []string) bool {
+	for _, sub := range subs {
+		if strings.Contains(s, sub) {
+			return true
+		}
+	}
+	return false
+}
 
 // Run reads the task from the environment, executes it and reports the result.
 func Run(ctx context.Context) error {
@@ -53,12 +137,15 @@ func Execute(ctx context.Context, t *task.Task) (*task.Result, error) {
 	if v, _ := strconv.Atoi(os.Getenv("PLANB_PART_SIZE_MB")); v > 0 {
 		st.PartSize = uint64(v) << 20
 	}
+	log := slog.With("op", t.Op, "name", t.Name, "location", st.URL(t.BackupKey))
+	storage.SetRequestBackoff(requestRetryUnit, requestRetryCap)
+	p := retryPolicy(t)
+	st.Retry, st.Log = &p, log
 	if err := st.Check(ctx); err != nil {
 		return nil, fmt.Errorf("backup storage: %w", err)
 	}
 
-	log := slog.With("op", t.Op, "name", t.Name, "location", st.URL(t.BackupKey))
-	log.Info("starting")
+	log.Info("starting", "retryAttempts", p.Attempts, "maxBackoff", p.MaxBackoff)
 	var res *task.Result
 	switch {
 	case t.Postgres != nil && t.Op == task.OpBackup:
@@ -157,10 +244,13 @@ func streamOut(ctx context.Context, st *storage.Client, key string, cmd *exec.Cm
 		_ = cmd.Process.Kill()
 	}
 	waitErr := cmd.Wait()
-	if waitErr != nil {
-		return size, fmt.Errorf("%s failed: %w: %s", cmd.Args[0], waitErr, stderr.String())
+	if upErr != nil {
+		return size, upErr // the tool was killed because the upload failed
 	}
-	return size, upErr
+	if waitErr != nil {
+		return size, &toolError{tool: cmd.Args[0], stderr: stderr.String(), err: waitErr}
+	}
+	return size, nil
 }
 
 // streamIn downloads key and pipes it into cmd's stdin.
@@ -184,7 +274,7 @@ func streamIn(ctx context.Context, st *storage.Client, key string, cmd *exec.Cmd
 		cmd.Stdout = os.Stdout
 	}
 	if err := cmd.Run(); err != nil {
-		return size, fmt.Errorf("%s failed: %w: %s", cmd.Args[0], err, stderr.String())
+		return size, &toolError{tool: cmd.Args[0], stderr: stderr.String(), err: err}
 	}
 	return size, nil
 }

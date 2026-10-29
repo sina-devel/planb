@@ -115,7 +115,7 @@ spec:
   selector: { app: s3 }
   ports: [{ port: 9000 }]
 ---
-apiVersion: planb.io/v1alpha1
+apiVersion: planb.sina-devel.github.io/v1alpha1
 kind: BackupStorageLocation
 metadata:
   name: default

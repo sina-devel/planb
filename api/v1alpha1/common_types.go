@@ -2,7 +2,29 @@ package v1alpha1
 
 import (
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
+
+// RetryPolicy controls how the agent retries transient failures inside a Job: network errors, timeouts,
+// 5xx responses and rate limits from S3, and dropped or refused PostgreSQL connections. Each object copy,
+// listing, dump file or connection is retried on its own with exponential backoff and jitter. Interrupted
+// downloads resume where they stopped. Errors such as wrong credentials or a missing bucket fail at once.
+type RetryPolicy struct {
+	// Attempts per operation, including the first one.
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=50
+	// +kubebuilder:default=5
+	// +optional
+	Attempts *int32 `json:"attempts,omitempty"`
+	// InitialBackoff is the wait before the second attempt. It doubles after each failure.
+	// +kubebuilder:default="2s"
+	// +optional
+	InitialBackoff *metav1.Duration `json:"initialBackoff,omitempty"`
+	// MaxBackoff caps the wait between attempts.
+	// +kubebuilder:default="1m"
+	// +optional
+	MaxBackoff *metav1.Duration `json:"maxBackoff,omitempty"`
+}
 
 // S3Credentials points at a Secret (in the same namespace) holding S3 access keys.
 type S3Credentials struct {
@@ -90,4 +112,8 @@ type JobOptions struct {
 	// +kubebuilder:default=1
 	// +optional
 	BackoffLimit *int32 `json:"backoffLimit,omitempty"`
+	// Retry controls retries of transient failures inside the Job. The Job's backoffLimit applies on top:
+	// it restarts the whole backup or restore when the retries are used up.
+	// +optional
+	Retry *RetryPolicy `json:"retry,omitempty"`
 }

@@ -15,11 +15,16 @@ import (
 func backupPostgres(ctx context.Context, log *slog.Logger, st *storage.Client, t *task.Task) (*task.Result, error) {
 	pg := t.Postgres
 	res := &task.Result{}
+	// A dump is read-only on the server and overwrites its own object, so any transient failure reruns it.
 	upload := func(file string, gz bool, name string, args ...string) error {
 		key := t.BackupKey + path.Join(task.PostgresDir, file)
 		log.Info("dumping", "tool", name, "file", file)
-		cmd, stderr := command(ctx, pg, name, args...)
-		size, err := streamOut(ctx, st, key, cmd, stderr, gz)
+		var size int64
+		err := retryOp(ctx, t, log, "dump "+file, transient(false), func() (err error) {
+			cmd, stderr := command(ctx, pg, name, args...)
+			size, err = streamOut(ctx, st, key, cmd, stderr, gz)
+			return err
+		})
 		if err != nil {
 			return err
 		}
@@ -71,11 +76,16 @@ func restorePostgres(ctx context.Context, log *slog.Logger, st *storage.Client, 
 		}
 		return false
 	}
+	// Replaying SQL is not idempotent, so it is repeated only when psql could not connect at all.
 	psqlFile := func(file string) error {
 		log.Info("replaying SQL", "file", file)
 		args := append([]string{"--dbname=postgres", "--quiet"}, pg.ExtraArgs...)
-		cmd, stderr := command(ctx, pg, "psql", args...)
-		size, err := streamIn(ctx, st, prefix+file, cmd, stderr, true)
+		var size int64
+		err := retryOp(ctx, t, log, "replay "+file, transient(true), func() (err error) {
+			cmd, stderr := command(ctx, pg, "psql", args...)
+			size, err = streamIn(ctx, st, prefix+file, cmd, stderr, true)
+			return err
+		})
 		if err != nil {
 			return err
 		}
@@ -117,7 +127,11 @@ func restorePostgres(ctx context.Context, log *slog.Logger, st *storage.Client, 
 			target = m
 		}
 		if pg.CreateDatabase {
-			if err := ensureDatabase(ctx, log, pg, target); err != nil {
+			// ensureDatabase checks before it creates, so it is safe to repeat.
+			err := retryOp(ctx, t, log, "create database "+target, transient(false), func() error {
+				return ensureDatabase(ctx, log, pg, target)
+			})
+			if err != nil {
 				return res, err
 			}
 		}
@@ -127,8 +141,14 @@ func restorePostgres(ctx context.Context, log *slog.Logger, st *storage.Client, 
 			args = append(args, "--clean", "--if-exists")
 		}
 		args = append(args, pg.ExtraArgs...)
-		cmd, stderr := command(ctx, pg, "pg_restore", args...)
-		size, err := streamIn(ctx, st, prefix+f, cmd, stderr, false)
+		// With clean, pg_restore drops what an interrupted attempt created, so a lost connection can be
+		// retried too. Without it, only a failure to connect is retried.
+		var size int64
+		err := retryOp(ctx, t, log, "restore database "+target, transient(!pg.Clean), func() (err error) {
+			cmd, stderr := command(ctx, pg, "pg_restore", args...)
+			size, err = streamIn(ctx, st, prefix+f, cmd, stderr, false)
+			return err
+		})
 		if err != nil {
 			return res, err
 		}
@@ -156,7 +176,7 @@ func ensureDatabase(ctx context.Context, log *slog.Logger, pg *task.Postgres, na
 		"--command=SELECT 1 FROM pg_database WHERE datname = "+quoteLiteral(name))
 	out, err := cmd.Output()
 	if err != nil {
-		return fmt.Errorf("checking database %q: %w: %s", name, err, stderr.String())
+		return &toolError{tool: fmt.Sprintf("checking database %q", name), stderr: stderr.String(), err: err}
 	}
 	if strings.TrimSpace(string(out)) == "1" {
 		return nil
@@ -164,7 +184,7 @@ func ensureDatabase(ctx context.Context, log *slog.Logger, pg *task.Postgres, na
 	log.Info("creating database", "name", name)
 	cmd, stderr = command(ctx, pg, "psql", "--dbname=postgres", "--command=CREATE DATABASE "+quoteIdent(name))
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("creating database %q: %w: %s", name, err, stderr.String())
+		return &toolError{tool: fmt.Sprintf("creating database %q", name), stderr: stderr.String(), err: err}
 	}
 	return nil
 }

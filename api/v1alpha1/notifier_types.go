@@ -114,7 +114,7 @@ type NotifierSpec struct {
 	// +optional
 	Events []NotificationEvent `json:"events,omitempty"`
 	// Selector limits notifications to Backups/Restores with matching labels,
-	// e.g. {matchLabels: {planb.io/schedule: nightly}}. Empty matches everything in the namespace.
+	// e.g. {matchLabels: {planb.sina-devel.github.io/schedule: nightly}}. Empty matches everything in the namespace.
 	// +optional
 	Selector *metav1.LabelSelector `json:"selector,omitempty"`
 	// Suspend stops sending notifications.
@@ -168,7 +168,7 @@ type NotifierStatus struct {
 	// LastFailureTime of the last failed notification.
 	// +optional
 	LastFailureTime *metav1.Time `json:"lastFailureTime,omitempty"`
-	// LastTestRequest is the value of the planb.io/test annotation that was last handled.
+	// LastTestRequest is the value of the planb.sina-devel.github.io/test annotation that was last handled.
 	// +optional
 	LastTestRequest string `json:"lastTestRequest,omitempty"`
 }

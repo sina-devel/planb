@@ -1,5 +1,5 @@
 # Backs up the app database every minute and keeps only the newest 2 backups.
-apiVersion: planb.io/v1alpha1
+apiVersion: planb.sina-devel.github.io/v1alpha1
 kind: Schedule
 metadata:
   name: app-every-minute

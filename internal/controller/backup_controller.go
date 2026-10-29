@@ -31,9 +31,9 @@ type BackupReconciler struct {
 	Options
 }
 
-// +kubebuilder:rbac:groups=planb.io,resources=backups;restores;schedules;backupstoragelocations,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=planb.io,resources=backups/status;restores/status;schedules/status;backupstoragelocations/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=planb.io,resources=backups/finalizers;restores/finalizers,verbs=update
+// +kubebuilder:rbac:groups=planb.sina-devel.github.io,resources=backups;restores;schedules;backupstoragelocations,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=planb.sina-devel.github.io,resources=backups/status;restores/status;schedules/status;backupstoragelocations/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=planb.sina-devel.github.io,resources=backups/finalizers;restores/finalizers,verbs=update
 // +kubebuilder:rbac:groups=batch,resources=jobs,verbs=get;list;watch;create;delete
 // +kubebuilder:rbac:groups="",resources=pods,verbs=get;list
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get

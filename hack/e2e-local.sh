@@ -28,9 +28,12 @@ initdb -D "$T/pg" -U postgres --auth=scram-sha-256 --pwfile="$T/pwfile" >/dev/nu
 pg_ctl -D "$T/pg" -l "$T/pg.log" -w start \
   -o "-p $PGPORT_E2E -c listen_addresses=127.0.0.1 -c unix_socket_directories=''" >/dev/null || { cat "$T/pg.log"; fail "postgres did not start"; }
 mkdir -p "$T/s3/backups" "$T/s3/src" "$T/s3/restored"
-rclone serve s3 --addr "127.0.0.1:$S3PORT" --auth-key "$KEY,$SECRET" "$T/s3" >"$T/s3.log" 2>&1 &
-S3PID=$!
-for _ in $(seq 50); do curl -s -o /dev/null "http://127.0.0.1:$S3PORT/" && break; sleep 0.2; done
+start_s3() {
+  rclone serve s3 --dir-cache-time 1s --addr "127.0.0.1:$S3PORT" --auth-key "$KEY,$SECRET" "$T/s3" >>"$T/s3.log" 2>&1 &
+  S3PID=$!
+  for _ in $(seq 50); do curl -s -o /dev/null "http://127.0.0.1:$S3PORT/" && break; sleep 0.2; done
+}
+start_s3
 
 export PGPASSWORD=secret
 psql() { command psql -h 127.0.0.1 -p "$PGPORT_E2E" -U postgres -v ON_ERROR_STOP=1 -tAq "$@"; }
@@ -84,5 +87,35 @@ echo "==> bucket restore with overwrite=false keeps existing objects"
 echo changed >"$T/s3/restored/copy/dir1/f1.txt"
 agent '{"op":"restore","name":"r4",'"$STORAGE"',"backupKey":"planb/backups/b1/","bucket":{"s3":{'"$S3"',"bucket":"restored","prefix":"copy/"},"overwrite":false}}'
 [ "$(cat "$T/s3/restored/copy/dir1/f1.txt")" = "changed" ] || fail "overwrite=false replaced an object"
+
+echo "==> bucket restore with prune removes objects that are not in the backup"
+mkdir -p "$T/s3/restored/copy/extra"
+echo stale >"$T/s3/restored/copy/extra/stale.txt"
+echo outside >"$T/s3/restored/outside.txt"
+sleep 1.5 # let rclone notice files written behind its back
+agent '{"op":"restore","name":"r5",'"$STORAGE"',"backupKey":"planb/backups/b1/","bucket":{"s3":{'"$S3"',"bucket":"restored","prefix":"copy/"},"overwrite":true,"prune":true}}'
+[ ! -e "$T/s3/restored/copy/extra/stale.txt" ] || fail "prune kept an object that is not in the backup"
+[ -e "$T/s3/restored/outside.txt" ] || fail "prune deleted an object outside the target prefix"
+[ "$(find "$T/s3/restored/copy" -type f | wc -l)" = 25 ] || fail "expected exactly 25 objects after prune"
+[ "$(cat "$T/s3/restored/copy/dir1/f1.txt")" = "file 1" ] || fail "prune restore content"
+
+echo "==> bucket restore with prune into the storage bucket keeps planb's backups"
+echo stale >"$T/s3/backups/stale.txt"
+sleep 1.5
+agent '{"op":"restore","name":"r6",'"$STORAGE"',"backupKey":"planb/backups/b1/","bucket":{"s3":{'"$S3"',"bucket":"backups"},"prune":true}}'
+[ ! -e "$T/s3/backups/stale.txt" ] || fail "prune kept a stale object in the storage bucket"
+[ -s "$T/s3/backups/planb/backups/pg1/postgres/app.dump" ] || fail "prune deleted planb's own backups"
+[ -e "$T/s3/backups/dir1/f1.txt" ] || fail "prune restore into the storage bucket"
+
+echo "==> backup survives an S3 outage (retries with backoff)"
+kill "$S3PID"; wait "$S3PID" 2>/dev/null || true
+RETRY='"retry":{"attempts":8,"initialBackoff":1000000000,"maxBackoff":4000000000}'
+agent '{"op":"backup","name":"b-outage",'"$STORAGE"',"backupKey":"planb/backups/b-outage/",'"$RETRY"',"bucket":{"s3":{'"$S3"',"bucket":"src","prefix":"data"}}}' >"$T/outage.log" 2>&1 &
+APID=$!
+sleep 4
+start_s3
+wait "$APID" || { cat "$T/outage.log"; fail "backup did not recover after the outage"; }
+grep -q "retrying after error" "$T/outage.log" || { cat "$T/outage.log"; fail "expected retries in the agent log"; }
+[ "$(find "$T/s3/backups/planb/backups/b-outage/bucket" -type f | wc -l)" = 25 ] || fail "expected 25 objects after the outage"
 
 echo "==> all e2e checks passed"

@@ -26,8 +26,8 @@ import (
 // notifyRetryWindow is how long failed deliveries are retried after a Backup or Restore finished.
 const notifyRetryWindow = time.Hour
 
-// +kubebuilder:rbac:groups=planb.io,resources=notifiers,verbs=get;list;watch;update;patch
-// +kubebuilder:rbac:groups=planb.io,resources=notifiers/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=planb.sina-devel.github.io,resources=notifiers,verbs=get;list;watch;update;patch
+// +kubebuilder:rbac:groups=planb.sina-devel.github.io,resources=notifiers/status,verbs=get;update;patch
 
 // NotifierReconciler validates Notifiers and sends test messages.
 type NotifierReconciler struct {
@@ -146,7 +146,7 @@ func (r *NotifierReconciler) SetupWithManager(mgr ctrl.Manager) error {
 }
 
 // NotificationReconciler tells the matching Notifiers about finished Backups or Restores (one reconciler per kind).
-// Delivered Notifiers are recorded in the planb.io/notified annotation, so each is told at least once.
+// Delivered Notifiers are recorded in the planb.sina-devel.github.io/notified annotation, so each is told at least once.
 type NotificationReconciler struct {
 	client.Client
 	APIReader   client.Reader

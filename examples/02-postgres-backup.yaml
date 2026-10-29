@@ -8,7 +8,7 @@ stringData:
   password: CHANGE_ME
 ---
 # One-off backup of two databases (pg_dump custom format) plus roles.
-apiVersion: planb.io/v1alpha1
+apiVersion: planb.sina-devel.github.io/v1alpha1
 kind: Backup
 metadata:
   name: app-manual-1

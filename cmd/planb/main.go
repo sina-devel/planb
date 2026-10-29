@@ -115,7 +115,7 @@ func runManager(args []string) error {
 		Metrics:                metricsserver.Options{BindAddress: *metricsAddr},
 		HealthProbeBindAddress: *probeAddr,
 		LeaderElection:         *leaderElect,
-		LeaderElectionID:       "planb.planb.io",
+		LeaderElectionID:       "planb.planb.sina-devel.github.io",
 		Cache:                  cacheOpts,
 	})
 	if err != nil {

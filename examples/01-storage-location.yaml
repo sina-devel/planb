@@ -8,7 +8,7 @@ stringData:
   accessKey: CHANGE_ME
   secretKey: CHANGE_ME
 ---
-apiVersion: planb.io/v1alpha1
+apiVersion: planb.sina-devel.github.io/v1alpha1
 kind: BackupStorageLocation
 metadata:
   name: default

@@ -122,12 +122,21 @@ func pgCredEnv(c planbv1.PostgresCredentials) []corev1.EnvVar {
 
 // buildJob creates the Job running the agent for a task.
 func (o *Options) buildJob(owner client.Object, name string, labels map[string]string, t *task.Task, env []corev1.EnvVar, opts *planbv1.JobOptions) (*batchv1.Job, error) {
+	if opts == nil {
+		opts = &planbv1.JobOptions{}
+	}
+	if rp := opts.Retry; rp != nil {
+		t.Retry = task.Retry{Attempts: int(ptr.Deref(rp.Attempts, 0))}
+		if rp.InitialBackoff != nil {
+			t.Retry.InitialBackoff = rp.InitialBackoff.Duration
+		}
+		if rp.MaxBackoff != nil {
+			t.Retry.MaxBackoff = rp.MaxBackoff.Duration
+		}
+	}
 	encoded, err := t.Encode()
 	if err != nil {
 		return nil, err
-	}
-	if opts == nil {
-		opts = &planbv1.JobOptions{}
 	}
 	image := o.AgentImage
 	if opts.Image != "" {

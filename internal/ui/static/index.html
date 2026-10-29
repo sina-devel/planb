@@ -209,7 +209,7 @@ const views = {
     create: () => btn("New backup", "new-backup", "", "primary"),
     head: ["Name", "Source", "Status", "Size", "Time", ""],
     rows: (d) => d.backups.map((b) => ({ obj: b, source: sourceText(b.spec), html: `
-      ${nameCell(b, b.metadata.labels?.["planb.io/schedule"] ? "schedule: " + esc(b.metadata.labels["planb.io/schedule"]) : "")}
+      ${nameCell(b, b.metadata.labels?.["planb.sina-devel.github.io/schedule"] ? "schedule: " + esc(b.metadata.labels["planb.sina-devel.github.io/schedule"]) : "")}
       <td data-label="Source"><div>${esc(sourceText(b.spec))}${sub("→ " + esc(b.spec.storageLocation))}</div></td>
       <td data-label="Status"><div>${phase(b.status?.phase)}${msg(b.status?.message)}</div></td>
       <td class="nw" data-label="Size"><div>${bytes(b.status?.sizeBytes)}${sub(b.status?.items != null ? b.status.items + " items" : "")}</div></td>
@@ -294,7 +294,7 @@ function channelText(s) {
 function scopeText(sel) {
   if (!sel) return "all backups/restores";
   const l = sel.matchLabels || {};
-  if (l["planb.io/schedule"] && Object.keys(l).length === 1 && !sel.matchExpressions) return "schedule " + l["planb.io/schedule"];
+  if (l["planb.sina-devel.github.io/schedule"] && Object.keys(l).length === 1 && !sel.matchExpressions) return "schedule " + l["planb.sina-devel.github.io/schedule"];
   return "selector " + JSON.stringify(sel);
 }
 
@@ -577,7 +577,7 @@ function newNotifierDialog() {
     const events = [...f.ev].filter((c) => c.checked).map((c) => c.value);
     if (!events.length) throw new Error("Select at least one event.");
     const spec = { events };
-    if (val(f, "sched")) spec.selector = { matchLabels: { "planb.io/schedule": val(f, "sched") } };
+    if (val(f, "sched")) spec.selector = { matchLabels: { "planb.sina-devel.github.io/schedule": val(f, "sched") } };
     switch (f.ch.value) {
       case "telegram": spec.telegram = { chatID: val(f, "tgchat"), apiURL: val(f, "tgapi") || undefined, botToken: readSecretValue(f, "tg", "token", secrets) }; break;
       case "slack": spec.slack = { channel: val(f, "slchannel") || undefined, webhookURL: readSecretValue(f, "sl", "url", secrets) }; break;
@@ -611,7 +611,8 @@ function restoreDialog(b) {
       <label>Target bucket (optional)<input name="bucket" placeholder="${esc(b.spec.bucket.bucket)}"></label>
       <label>Target prefix (optional)<input name="prefix" placeholder="${esc(b.spec.bucket.prefix || "")}"></label>
     </div>
-    <label class="inline"><input type="checkbox" name="overwrite" checked> Overwrite existing objects</label>`;
+    <label class="inline"><input type="checkbox" name="overwrite" checked> Overwrite existing objects</label>
+    <label class="inline"><input type="checkbox" name="prune"> Prune: delete objects in the target that are not in the backup</label>`;
   dialog(`Restore ${b.metadata.name}`, body + `<label>Restore name (optional)<input name="name"></label>`, "Restore", async (f) => {
     const spec = { backupName: b.metadata.name };
     if (pg) {
@@ -626,7 +627,7 @@ function restoreDialog(b) {
         spec.postgres.target.host = val(f, "host");
       }
     } else {
-      spec.bucket = { overwrite: f.overwrite.checked };
+      spec.bucket = { overwrite: f.overwrite.checked, prune: f.prune.checked };
       if (val(f, "bucket") || val(f, "prefix")) {
         spec.bucket.target = { ...b.spec.bucket, bucket: val(f, "bucket") || b.spec.bucket.bucket, prefix: val(f, "prefix") || b.spec.bucket.prefix };
       }

@@ -360,7 +360,7 @@ func (s *Server) deleteNotifier(w http.ResponseWriter, r *http.Request) {
 	s.deleteObject(w, r, &planbv1.Notifier{})
 }
 
-// testNotifier asks the operator to send a test message by changing the planb.io/test annotation.
+// testNotifier asks the operator to send a test message by changing the planb.sina-devel.github.io/test annotation.
 func (s *Server) testNotifier(w http.ResponseWriter, r *http.Request) {
 	ns, err := s.namespace(r.PathValue("ns"))
 	if err != nil {

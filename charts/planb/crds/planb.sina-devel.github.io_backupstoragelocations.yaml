@@ -4,9 +4,9 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.23.0
-  name: backupstoragelocations.planb.io
+  name: backupstoragelocations.planb.sina-devel.github.io
 spec:
-  group: planb.io
+  group: planb.sina-devel.github.io
   names:
     kind: BackupStorageLocation
     listKind: BackupStorageLocationList

@@ -4,9 +4,9 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.23.0
-  name: notifiers.planb.io
+  name: notifiers.planb.sina-devel.github.io
 spec:
-  group: planb.io
+  group: planb.sina-devel.github.io
   names:
     kind: Notifier
     listKind: NotifierList
@@ -125,7 +125,7 @@ spec:
               selector:
                 description: |-
                   Selector limits notifications to Backups/Restores with matching labels,
-                  e.g. {matchLabels: {planb.io/schedule: nightly}}. Empty matches everything in the namespace.
+                  e.g. {matchLabels: {planb.sina-devel.github.io/schedule: nightly}}. Empty matches everything in the namespace.
                 properties:
                   matchExpressions:
                     description: matchExpressions is a list of label selector requirements.
@@ -271,8 +271,8 @@ spec:
                 format: date-time
                 type: string
               lastTestRequest:
-                description: LastTestRequest is the value of the planb.io/test annotation
-                  that was last handled.
+                description: LastTestRequest is the value of the planb.sina-devel.github.io/test
+                  annotation that was last handled.
                 type: string
               message:
                 description: Message describes the last failure, if any.

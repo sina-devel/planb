@@ -8,6 +8,7 @@ package task
 import (
 	"encoding/json"
 	"path"
+	"time"
 
 	"github.com/sina-devel/planb/internal/storage"
 )
@@ -51,6 +52,14 @@ type Task struct {
 	BackupKey string    `json:"backupKey"`
 	Postgres  *Postgres `json:"postgres,omitempty"`
 	Bucket    *Bucket   `json:"bucket,omitempty"`
+	Retry     Retry     `json:"retry,omitzero"`
+}
+
+// Retry is the retry policy for transient failures. Zero values use the agent defaults.
+type Retry struct {
+	Attempts       int           `json:"attempts,omitempty"`
+	InitialBackoff time.Duration `json:"initialBackoff,omitempty"`
+	MaxBackoff     time.Duration `json:"maxBackoff,omitempty"`
 }
 
 // Postgres task options. Credentials come from PGUSER/PGPASSWORD.
@@ -77,12 +86,15 @@ type Bucket struct {
 	S3          storage.Config `json:"s3"`
 	Overwrite   bool           `json:"overwrite,omitempty"`
 	Concurrency int            `json:"concurrency,omitempty"`
+	// Prune (restore only) deletes target objects that are not in the backup.
+	Prune bool `json:"prune,omitempty"`
 }
 
 // Result is reported by the agent through the termination message.
 type Result struct {
 	SizeBytes int64    `json:"sizeBytes"`
 	Items     int64    `json:"items"`
+	Deleted   int64    `json:"deleted,omitempty"`
 	Files     []string `json:"files,omitempty"`
 	Error     string   `json:"error,omitempty"`
 }

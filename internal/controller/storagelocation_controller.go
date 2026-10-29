@@ -10,6 +10,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/events"
+	k8sretry "k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -130,8 +131,16 @@ func (r *StorageLocationReconciler) sync(ctx context.Context, bsl *planbv1.Backu
 		} else if b.Annotations[planbv1.AnnotationSynced] != "true" {
 			continue // a local backup that has not started yet: not ours to touch
 		}
-		b.Status = meta.Status
-		if err := r.Status().Update(ctx, b); err != nil {
+		// The backup controller adds its finalizer right after the Backup is created, so the copy in hand may be
+		// stale: re-read it from the API server and retry on conflict.
+		err = k8sretry.RetryOnConflict(k8sretry.DefaultRetry, func() error {
+			if err := r.APIReader.Get(ctx, client.ObjectKeyFromObject(b), b); err != nil {
+				return err
+			}
+			b.Status = meta.Status
+			return r.Status().Update(ctx, b)
+		})
+		if err != nil {
 			return err
 		}
 		log.Info("synced backup from storage", "backup", name)

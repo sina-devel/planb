@@ -12,14 +12,14 @@ metadata:
   name: {{ $name }}
   labels: {{- include "planb.labels" . | nindent 4 }}
 rules:
-  - apiGroups: [planb.io]
+  - apiGroups: [planb.sina-devel.github.io]
     resources: [backups, restores, schedules, backupstoragelocations, notifiers]
     verbs: [get, list, watch]
   {{- if not .Values.ui.readOnly }}
-  - apiGroups: [planb.io]
+  - apiGroups: [planb.sina-devel.github.io]
     resources: [backups, restores, schedules, backupstoragelocations, notifiers]
     verbs: [create, delete]
-  - apiGroups: [planb.io]
+  - apiGroups: [planb.sina-devel.github.io]
     resources: [schedules, notifiers]
     verbs: [patch]
   # Credentials entered in the UI forms. Create only: the UI can never read existing Secrets.

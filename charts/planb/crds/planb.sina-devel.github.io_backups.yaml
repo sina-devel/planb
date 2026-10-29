@@ -4,33 +4,36 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.23.0
-  name: restores.planb.io
+  name: backups.planb.sina-devel.github.io
 spec:
-  group: planb.io
+  group: planb.sina-devel.github.io
   names:
-    kind: Restore
-    listKind: RestoreList
-    plural: restores
-    singular: restore
+    kind: Backup
+    listKind: BackupList
+    plural: backups
+    singular: backup
   scope: Namespaced
   versions:
   - additionalPrinterColumns:
-    - jsonPath: .spec.backupName
-      name: Backup
-      type: string
     - jsonPath: .status.phase
       name: Phase
       type: string
+    - jsonPath: .spec.storageLocation
+      name: Location
+      type: string
+    - jsonPath: .status.sizeBytes
+      name: Size
+      type: integer
     - jsonPath: .status.completionTimestamp
       name: Completed
       type: date
-    - jsonPath: .metadata.creationTimestamp
-      name: Age
-      type: date
+    - jsonPath: .status.expiration
+      name: Expires
+      type: string
     name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: Restore restores a Backup into a PostgreSQL server or a bucket.
+        description: Backup is a one-off backup of a PostgreSQL server or a bucket.
         properties:
           apiVersion:
             description: |-
@@ -50,68 +53,54 @@ spec:
           metadata:
             type: object
           spec:
-            description: RestoreSpec defines the desired state of Restore.
+            description: BackupSpec defines the desired state of Backup.
             properties:
-              backupName:
-                description: BackupName is the Backup (in the same namespace) to restore
-                  from.
-                minLength: 1
-                type: string
               bucket:
-                description: BucketRestoreOptions control a bucket restore.
+                description: BucketBackupSource copies all objects of a bucket (optionally
+                  under a prefix).
                 properties:
-                  overwrite:
-                    default: true
-                    description: Overwrite existing objects in the target. When false,
-                      existing keys are skipped.
-                    type: boolean
-                  target:
-                    description: Target bucket. Defaults to the bucket (and prefix)
-                      the backup was taken from.
+                  bucket:
+                    description: Bucket name.
+                    minLength: 1
+                    type: string
+                  credentials:
+                    description: Credentials secret. When omitted, anonymous / IAM-provided
+                      credentials are used.
                     properties:
-                      bucket:
-                        description: Bucket name.
-                        minLength: 1
+                      accessKeyIdKey:
+                        default: accessKey
+                        description: Key holding the access key ID.
                         type: string
-                      credentials:
-                        description: Credentials secret. When omitted, anonymous /
-                          IAM-provided credentials are used.
-                        properties:
-                          accessKeyIdKey:
-                            default: accessKey
-                            description: Key holding the access key ID.
-                            type: string
-                          name:
-                            description: Name of the Secret.
-                            type: string
-                          secretAccessKeyKey:
-                            default: secretKey
-                            description: Key holding the secret access key.
-                            type: string
-                        required:
-                        - name
-                        type: object
-                      endpoint:
-                        description: Endpoint host[:port], without scheme. e.g. s3.amazonaws.com
-                          or minio.minio.svc:9000
-                        minLength: 1
+                      name:
+                        description: Name of the Secret.
                         type: string
-                      insecure:
-                        description: Insecure uses plain HTTP instead of HTTPS.
-                        type: boolean
-                      prefix:
-                        description: Prefix inside the bucket.
+                      secretAccessKeyKey:
+                        default: secretKey
+                        description: Key holding the secret access key.
                         type: string
-                      region:
-                        description: Region of the bucket.
-                        type: string
-                      skipTLSVerify:
-                        description: SkipTLSVerify disables TLS certificate verification.
-                        type: boolean
                     required:
-                    - bucket
-                    - endpoint
+                    - name
                     type: object
+                  endpoint:
+                    description: Endpoint host[:port], without scheme. e.g. s3.amazonaws.com
+                      or minio.minio.svc:9000
+                    minLength: 1
+                    type: string
+                  insecure:
+                    description: Insecure uses plain HTTP instead of HTTPS.
+                    type: boolean
+                  prefix:
+                    description: Prefix inside the bucket.
+                    type: string
+                  region:
+                    description: Region of the bucket.
+                    type: string
+                  skipTLSVerify:
+                    description: SkipTLSVerify disables TLS certificate verification.
+                    type: boolean
+                required:
+                - bucket
+                - endpoint
                 type: object
               job:
                 description: JobOptions customise the Job that performs a backup or
@@ -192,6 +181,28 @@ spec:
                           More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
                         type: object
                     type: object
+                  retry:
+                    description: |-
+                      Retry controls retries of transient failures inside the Job. The Job's backoffLimit applies on top:
+                      it restarts the whole backup or restore when the retries are used up.
+                    properties:
+                      attempts:
+                        default: 5
+                        description: Attempts per operation, including the first one.
+                        format: int32
+                        maximum: 50
+                        minimum: 1
+                        type: integer
+                      initialBackoff:
+                        default: 2s
+                        description: InitialBackoff is the wait before the second
+                          attempt. It doubles after each failure.
+                        type: string
+                      maxBackoff:
+                        default: 1m
+                        description: MaxBackoff caps the wait between attempts.
+                        type: string
+                    type: object
                   serviceAccountName:
                     type: string
                   tolerations:
@@ -235,101 +246,113 @@ spec:
                     type: array
                 type: object
               postgres:
-                description: PostgresRestoreOptions control a PostgreSQL restore.
+                description: PostgresBackupSource backs up databases from a PostgreSQL
+                  server.
                 properties:
-                  clean:
-                    description: Clean drops existing objects before recreating them
-                      (pg_restore --clean --if-exists).
-                    type: boolean
-                  createDatabase:
-                    default: true
-                    description: CreateDatabase creates the target database if it
-                      does not exist.
-                    type: boolean
-                  databaseMapping:
-                    additionalProperties:
-                      type: string
-                    description: 'DatabaseMapping restores a database under a different
-                      name: {source: target}.'
+                  credentials:
+                    description: Credentials secret.
+                    properties:
+                      name:
+                        description: Name of the Secret.
+                        type: string
+                      passwordKey:
+                        default: password
+                        type: string
+                      usernameKey:
+                        default: username
+                        type: string
+                    required:
+                    - name
                     type: object
                   databases:
-                    description: 'Databases to restore (default: all databases in
-                      the backup).'
+                    description: |-
+                      Databases to dump with pg_dump (custom format). When empty, the whole
+                      cluster is dumped with pg_dumpall (plain SQL, gzipped).
                     items:
                       type: string
                     type: array
                   extraArgs:
-                    description: ExtraArgs appended to pg_restore / psql.
+                    description: ExtraArgs appended to the pg_dump / pg_dumpall command
+                      line.
                     items:
                       type: string
                     type: array
-                  restoreGlobals:
-                    description: RestoreGlobals also replays roles/tablespaces when
-                      the backup contains them.
+                  host:
+                    description: Host of the PostgreSQL server.
+                    minLength: 1
+                    type: string
+                  includeGlobals:
+                    description: |-
+                      IncludeGlobals also dumps roles and tablespaces (pg_dumpall --globals-only)
+                      when specific databases are listed.
                     type: boolean
-                  target:
-                    description: Target server. Defaults to the server the backup
-                      was taken from.
-                    properties:
-                      credentials:
-                        description: Credentials secret.
-                        properties:
-                          name:
-                            description: Name of the Secret.
-                            type: string
-                          passwordKey:
-                            default: password
-                            type: string
-                          usernameKey:
-                            default: username
-                            type: string
-                        required:
-                        - name
-                        type: object
-                      host:
-                        description: Host of the PostgreSQL server.
-                        minLength: 1
-                        type: string
-                      port:
-                        default: 5432
-                        format: int32
-                        type: integer
-                      sslMode:
-                        default: prefer
-                        description: SSLMode passed to libpq (disable, allow, prefer,
-                          require, verify-ca, verify-full).
-                        enum:
-                        - disable
-                        - allow
-                        - prefer
-                        - require
-                        - verify-ca
-                        - verify-full
-                        type: string
-                    required:
-                    - credentials
-                    - host
-                    type: object
+                  port:
+                    default: 5432
+                    format: int32
+                    type: integer
+                  sslMode:
+                    default: prefer
+                    description: SSLMode passed to libpq (disable, allow, prefer,
+                      require, verify-ca, verify-full).
+                    enum:
+                    - disable
+                    - allow
+                    - prefer
+                    - require
+                    - verify-ca
+                    - verify-full
+                    type: string
+                required:
+                - credentials
+                - host
                 type: object
+              storageLocation:
+                description: StorageLocation is the name of a BackupStorageLocation
+                  in the same namespace.
+                minLength: 1
+                type: string
+              ttl:
+                description: TTL after which the backup and its data are deleted.
+                  Defaults to 720h (30 days).
+                type: string
             required:
-            - backupName
+            - storageLocation
             type: object
+            x-kubernetes-validations:
+            - message: exactly one of postgres or bucket must be set
+              rule: has(self.postgres) != has(self.bucket)
           status:
-            description: RestoreStatus defines the observed state of Restore.
+            description: BackupStatus defines the observed state of Backup.
             properties:
               completionTimestamp:
                 format: date-time
                 type: string
+              expiration:
+                format: date-time
+                type: string
+              files:
+                description: Files stored for this backup, relative to Location.
+                items:
+                  type: string
+                type: array
               items:
+                description: Items is the number of dump files (postgres) or objects
+                  (bucket) stored.
                 format: int64
                 type: integer
               jobName:
+                description: JobName of the Job running the backup.
+                type: string
+              location:
+                description: Location of the backup data, e.g. s3://bucket/prefix/backups/name/
                 type: string
               message:
                 type: string
               phase:
+                description: BackupPhase is the lifecycle phase of a Backup.
                 type: string
               sizeBytes:
+                description: SizeBytes is the total size of the uploaded data.
                 format: int64
                 type: integer
               startTimestamp:

@@ -8,7 +8,7 @@ metadata:
 stringData:
   token: "123456789:CHANGE_ME"
 ---
-apiVersion: planb.io/v1alpha1
+apiVersion: planb.sina-devel.github.io/v1alpha1
 kind: Notifier
 metadata:
   name: telegram-ops
@@ -29,7 +29,7 @@ metadata:
 stringData:
   url: https://hooks.slack.com/services/CHANGE/ME
 ---
-apiVersion: planb.io/v1alpha1
+apiVersion: planb.sina-devel.github.io/v1alpha1
 kind: Notifier
 metadata:
   name: slack-nightly
@@ -37,13 +37,13 @@ metadata:
 spec:
   events: [BackupCompleted, BackupFailed]
   selector:
-    matchLabels: { planb.io/schedule: app-nightly }   # only backups of this schedule
+    matchLabels: { planb.sina-devel.github.io/schedule: app-nightly }   # only backups of this schedule
   slack:
     webhookURL: { name: slack-webhook, key: url }
     channel: "#backups"
 ---
 # Generic webhook: receives the event as JSON (event, kind, namespace, name, phase, message, source, sizeBytes, ...).
-apiVersion: planb.io/v1alpha1
+apiVersion: planb.sina-devel.github.io/v1alpha1
 kind: Notifier
 metadata:
   name: alerting
@@ -63,7 +63,7 @@ stringData:
   username: planb@example.com
   password: CHANGE_ME
 ---
-apiVersion: planb.io/v1alpha1
+apiVersion: planb.sina-devel.github.io/v1alpha1
 kind: Notifier
 metadata:
   name: email-dba

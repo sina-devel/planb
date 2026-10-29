@@ -1,5 +1,5 @@
 # Restore "app" from a backup into a new database on the same server.
-apiVersion: planb.io/v1alpha1
+apiVersion: planb.sina-devel.github.io/v1alpha1
 kind: Restore
 metadata:
   name: app-restore-test
@@ -15,9 +15,11 @@ spec:
     # target:               # restore into a different server
     #   host: postgres-staging.db.svc
     #   credentials: { name: staging-credentials }
+  # job:
+  #   retry: { attempts: 8, maxBackoff: 2m }   # transient failures (default: 5 attempts, at most 1m apart)
 ---
 # Restore a bucket backup into a different bucket/prefix, skipping existing keys.
-apiVersion: planb.io/v1alpha1
+apiVersion: planb.sina-devel.github.io/v1alpha1
 kind: Restore
 metadata:
   name: media-restore
@@ -26,6 +28,7 @@ spec:
   backupName: media-manual-1
   bucket:
     overwrite: false
+    # prune: true           # also delete objects under the target prefix that are not in the backup
     target:
       endpoint: s3.eu-central-1.amazonaws.com
       region: eu-central-1

@@ -1,5 +1,5 @@
 # Restores next to the originals so both can be compared.
-apiVersion: planb.io/v1alpha1
+apiVersion: planb.sina-devel.github.io/v1alpha1
 kind: Restore
 metadata:
   name: app-1-restore
@@ -9,7 +9,7 @@ spec:
   postgres:
     databaseMapping: { app: app_restored }
 ---
-apiVersion: planb.io/v1alpha1
+apiVersion: planb.sina-devel.github.io/v1alpha1
 kind: Restore
 metadata:
   name: media-1-restore

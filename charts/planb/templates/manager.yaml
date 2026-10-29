@@ -10,13 +10,13 @@ metadata:
   name: {{ include "planb.fullname" . }}
   labels: {{- include "planb.labels" . | nindent 4 }}
 rules:
-  - apiGroups: [planb.io]
+  - apiGroups: [planb.sina-devel.github.io]
     resources: [backups, restores, schedules, backupstoragelocations, notifiers]
     verbs: [get, list, watch, create, update, patch, delete]
-  - apiGroups: [planb.io]
+  - apiGroups: [planb.sina-devel.github.io]
     resources: [backups/status, restores/status, schedules/status, backupstoragelocations/status, notifiers/status]
     verbs: [get, update, patch]
-  - apiGroups: [planb.io]
+  - apiGroups: [planb.sina-devel.github.io]
     resources: [backups/finalizers, restores/finalizers]
     verbs: [update]
   - apiGroups: [batch]

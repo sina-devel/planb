@@ -4,9 +4,9 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.23.0
-  name: schedules.planb.io
+  name: schedules.planb.sina-devel.github.io
 spec:
-  group: planb.io
+  group: planb.sina-devel.github.io
   names:
     kind: Schedule
     listKind: ScheduleList
@@ -200,6 +200,29 @@ spec:
                               otherwise to an implementation-defined value. Requests cannot exceed Limits.
                               More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
                             type: object
+                        type: object
+                      retry:
+                        description: |-
+                          Retry controls retries of transient failures inside the Job. The Job's backoffLimit applies on top:
+                          it restarts the whole backup or restore when the retries are used up.
+                        properties:
+                          attempts:
+                            default: 5
+                            description: Attempts per operation, including the first
+                              one.
+                            format: int32
+                            maximum: 50
+                            minimum: 1
+                            type: integer
+                          initialBackoff:
+                            default: 2s
+                            description: InitialBackoff is the wait before the second
+                              attempt. It doubles after each failure.
+                            type: string
+                          maxBackoff:
+                            default: 1m
+                            description: MaxBackoff caps the wait between attempts.
+                            type: string
                         type: object
                       serviceAccountName:
                         type: string
