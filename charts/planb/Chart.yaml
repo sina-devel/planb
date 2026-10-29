@@ -2,5 +2,5 @@ apiVersion: v2
 name: planb
 description: Backup & restore operator for PostgreSQL and S3 buckets, with an optional web UI
 type: application
-version: 0.2.0
-appVersion: "0.2.0"
+version: 0.3.0
+appVersion: "0.3.0"
